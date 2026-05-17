@@ -1,10 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
+import { combineFeaturedVaults } from '@/constants/featuredVaults'
 import { TokenAssetsContext } from '@/contexts/useTokenAssets'
 import { VaultsContext } from '@/contexts/useVaults'
 import * as filters from '@/graphql/filters/vaultFilters'
 import { useTokenAssets } from '@/hooks/useTokenAssets'
 import { fetchKongVaultList } from '@/lib/kong-vault-client'
+import { fetchYvUsdAprs } from '@/lib/yvusd-apr-client'
 import type { Vault } from '@/types/vaultTypes'
 import { applyVaultOverrides } from '@/utils/vaultOverrides'
 
@@ -17,6 +19,12 @@ export function VaultsProvider({ children }: { children: React.ReactNode }) {
     queryKey: ['kong', 'vaults', 'list'],
     queryFn: () => fetchKongVaultList(),
     staleTime: 15 * 60 * 1000
+  })
+  const { data: yvUsdAprData } = useQuery({
+    queryKey: ['yvusd', 'aprs'],
+    queryFn: fetchYvUsdAprs,
+    staleTime: 30 * 1000,
+    refetchInterval: 60 * 1000
   })
   const { assets, loading: assetsLoading, error: assetsError } = useTokenAssets() // fetch token assets
 
@@ -49,7 +57,10 @@ export function VaultsProvider({ children }: { children: React.ReactNode }) {
   // Memoize vaults to prevent dependency changes in downstream useMemo hooks
   const vaults = useMemo(() => vaultsData, [vaultsData])
 
-  const normalizedVaults = useMemo(() => applyVaultOverrides(vaults), [vaults])
+  const normalizedVaults = useMemo(
+    () => combineFeaturedVaults(applyVaultOverrides(vaults), yvUsdAprData),
+    [vaults, yvUsdAprData]
+  )
 
   const filteredVaults = filters.filterYearnVaults(normalizedVaults)
 

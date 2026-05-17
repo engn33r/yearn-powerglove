@@ -14,6 +14,7 @@ import { VaultEventsLoadingState } from './VaultEventsLoadingState'
 interface VaultManagementEventsPanelProps {
   vaultChainId: ChainId
   vaultAddress: string
+  vaultEventAddresses?: string[]
   assetSymbol?: string
   assetDecimals?: number
   shareSymbol?: string
@@ -24,7 +25,16 @@ interface VaultManagementEventsPanelProps {
 const PAGE_SIZE = 50
 
 export const VaultManagementEventsPanel: React.FC<VaultManagementEventsPanelProps> = React.memo(
-  ({ vaultChainId, vaultAddress, assetSymbol, assetDecimals, shareSymbol, shareDecimals, strategyDetails = [] }) => {
+  ({
+    vaultChainId,
+    vaultAddress,
+    vaultEventAddresses,
+    assetSymbol,
+    assetDecimals,
+    shareSymbol,
+    shareDecimals,
+    strategyDetails = []
+  }) => {
     const {
       allEvents,
       allEventCount,
@@ -36,15 +46,22 @@ export const VaultManagementEventsPanel: React.FC<VaultManagementEventsPanelProp
       setEventType,
       currentPage,
       setCurrentPage
-    } = useVaultManagementEvents(vaultAddress, vaultChainId)
+    } = useVaultManagementEvents(vaultEventAddresses ?? vaultAddress, vaultChainId)
+    const eventAddresses = vaultEventAddresses ?? [vaultAddress]
+    const eventAddressesKey = eventAddresses.map((address) => address.toLowerCase()).join(',')
 
     const {
       data: userEvents = [],
       isLoading: isUserEventsLoading,
       error: userEventsError
     } = useQuery({
-      queryKey: ['envio', 'vault-user-events', vaultChainId, vaultAddress.toLowerCase()],
-      queryFn: () => fetchVaultUserEvents(vaultAddress, vaultChainId),
+      queryKey: ['envio', 'vault-user-events', vaultChainId, eventAddressesKey],
+      queryFn: async () => {
+        const eventGroups = await Promise.all(
+          eventAddresses.map((address) => fetchVaultUserEvents(address, vaultChainId))
+        )
+        return eventGroups.flat()
+      },
       staleTime: 60 * 1000
     })
 

@@ -43,7 +43,8 @@ function SingleVaultPage() {
     chartsError,
     overrideConfig,
     isBlacklisted,
-    blacklistReason
+    blacklistReason,
+    yieldDataAddress
   } = useVaultPageData({ vaultAddress, vaultChainId })
 
   // Transform main info panel data
@@ -64,7 +65,7 @@ function SingleVaultPage() {
   })
 
   const { data: vaultAprOracle } = useAprOracle({
-    address: vaultDetails?.address ? (vaultDetails.address as Address) : undefined,
+    address: yieldDataAddress ? (yieldDataAddress as Address) : undefined,
     chainId: vaultDetails?.v3 ? vaultChainId : undefined,
     delta: 0n,
     enabled: Boolean(vaultDetails?.v3)

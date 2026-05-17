@@ -4,7 +4,10 @@ import { fetchVaultUserEvents } from '@/lib/vault-events'
 import { useVaultEvents } from './useVaultEvents'
 
 vi.mock('@/lib/vault-events', () => ({
-  fetchVaultUserEvents: vi.fn()
+  fetchVaultUserEvents: vi.fn(),
+  sortEventsChronologically: vi.fn((events) =>
+    [...events].sort((a, b) => Number(b.blockTimestamp) - Number(a.blockTimestamp))
+  )
 }))
 
 function makeEvents(count: number, vaultAddress: string) {
@@ -58,5 +61,19 @@ describe('useVaultEvents', () => {
     expect(result.current.currentPage).toBe(1)
     expect(result.current.totalPages).toBe(1)
     expect(result.current.events).toHaveLength(10)
+  })
+
+  it('combines events for grouped vault addresses', async () => {
+    fetchVaultUserEventsMock.mockResolvedValueOnce(makeEvents(2, '0xvault-a'))
+    fetchVaultUserEventsMock.mockResolvedValueOnce(makeEvents(3, '0xvault-b'))
+
+    const { result } = renderHook(() => useVaultEvents(['0xvault-a', '0xvault-b'], 1))
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(fetchVaultUserEventsMock).toHaveBeenCalledWith('0xvault-a', 1)
+    expect(fetchVaultUserEventsMock).toHaveBeenCalledWith('0xvault-b', 1)
+    expect(result.current.events).toHaveLength(5)
+    expect(result.current.depositCount).toBe(5)
   })
 })

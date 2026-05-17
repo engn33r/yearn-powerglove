@@ -8,6 +8,7 @@ import { VaultEventsLoadingState } from './VaultEventsLoadingState'
 interface VaultEventsPanelProps {
   vaultChainId: ChainId
   vaultAddress: string
+  vaultEventAddresses?: string[]
   assetSymbol?: string
   assetDecimals?: number
   shareSymbol?: string
@@ -15,7 +16,7 @@ interface VaultEventsPanelProps {
 }
 
 export const VaultEventsPanel: React.FC<VaultEventsPanelProps> = React.memo(
-  ({ vaultChainId, vaultAddress, assetSymbol, assetDecimals, shareSymbol, shareDecimals }) => {
+  ({ vaultChainId, vaultAddress, vaultEventAddresses, assetSymbol, assetDecimals, shareSymbol, shareDecimals }) => {
     const {
       events,
       totalCount,
@@ -29,7 +30,7 @@ export const VaultEventsPanel: React.FC<VaultEventsPanelProps> = React.memo(
       currentPage,
       setCurrentPage,
       totalPages
-    } = useVaultEvents(vaultAddress, vaultChainId)
+    } = useVaultEvents(vaultEventAddresses ?? vaultAddress, vaultChainId)
 
     if (error) {
       return (

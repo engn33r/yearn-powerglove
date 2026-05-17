@@ -5,6 +5,9 @@ import { useVaultManagementEvents } from './useVaultManagementEvents'
 
 vi.mock('@/lib/vault-events', () => ({
   fetchVaultManagementEvents: vi.fn(),
+  sortEventsChronologically: vi.fn((events) =>
+    [...events].sort((a, b) => Number(b.blockTimestamp) - Number(a.blockTimestamp))
+  ),
   MANAGEMENT_EVENT_TYPE_OPTIONS: [
     { value: 'all', label: 'All events' },
     { value: 'shutdown', label: 'Shutdown' }
@@ -62,5 +65,19 @@ describe('useVaultManagementEvents', () => {
     expect(result.current.currentPage).toBe(1)
     expect(result.current.totalPages).toBe(1)
     expect(result.current.events).toHaveLength(10)
+  })
+
+  it('combines events for grouped vault addresses', async () => {
+    fetchVaultManagementEventsMock.mockResolvedValueOnce(makeEvents(2, '0xvault-a'))
+    fetchVaultManagementEventsMock.mockResolvedValueOnce(makeEvents(3, '0xvault-b'))
+
+    const { result } = renderHook(() => useVaultManagementEvents(['0xvault-a', '0xvault-b'], 1))
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(fetchVaultManagementEventsMock).toHaveBeenCalledWith('0xvault-a', 1)
+    expect(fetchVaultManagementEventsMock).toHaveBeenCalledWith('0xvault-b', 1)
+    expect(result.current.events).toHaveLength(5)
+    expect(result.current.allEventCount).toBe(5)
   })
 })

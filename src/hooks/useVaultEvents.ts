@@ -1,19 +1,26 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ChainId } from '@/constants/chains'
-import { fetchVaultUserEvents } from '@/lib/vault-events'
+import { fetchVaultUserEvents, sortEventsChronologically } from '@/lib/vault-events'
 import type { VaultUserEvent, VaultUserEventType } from '@/types/vaultEventTypes'
 
 const PAGE_SIZE = 50
 
-export function useVaultEvents(vaultAddress: string | undefined, chainId: ChainId | undefined) {
+const normalizeVaultAddresses = (vaultAddress: string | string[] | undefined): string[] => {
+  const addresses = Array.isArray(vaultAddress) ? vaultAddress : vaultAddress ? [vaultAddress] : []
+  return [...new Map(addresses.map((address) => [address.toLowerCase(), address])).values()]
+}
+
+export function useVaultEvents(vaultAddress: string | string[] | undefined, chainId: ChainId | undefined) {
   const [allEvents, setAllEvents] = useState<VaultUserEvent[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<Error | null>(null)
   const [eventType, setEventType] = useState<'all' | VaultUserEventType>('all')
   const [currentPage, setCurrentPage] = useState(1)
+  const vaultAddressesKey = useMemo(() => normalizeVaultAddresses(vaultAddress).join(','), [vaultAddress])
+  const vaultAddresses = useMemo(() => (vaultAddressesKey ? vaultAddressesKey.split(',') : []), [vaultAddressesKey])
 
   useEffect(() => {
-    if (!vaultAddress || !chainId) {
+    if (vaultAddresses.length === 0 || !chainId) {
       setAllEvents([])
       setIsLoading(false)
       setCurrentPage(1)
@@ -25,10 +32,10 @@ export function useVaultEvents(vaultAddress: string | undefined, chainId: ChainI
     setIsLoading(true)
     setError(null)
 
-    fetchVaultUserEvents(vaultAddress, chainId)
-      .then((events) => {
+    Promise.all(vaultAddresses.map((address) => fetchVaultUserEvents(address, chainId)))
+      .then((eventGroups) => {
         if (!cancelled) {
-          setAllEvents(events)
+          setAllEvents(sortEventsChronologically(eventGroups.flat()))
           setIsLoading(false)
         }
       })
@@ -42,7 +49,7 @@ export function useVaultEvents(vaultAddress: string | undefined, chainId: ChainI
     return () => {
       cancelled = true
     }
-  }, [vaultAddress, chainId])
+  }, [vaultAddresses, chainId])
 
   const filteredEvents = eventType === 'all' ? allEvents : allEvents.filter((e) => e.type === eventType)
 

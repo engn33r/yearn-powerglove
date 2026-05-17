@@ -1,11 +1,21 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import type { ChainId } from '@/constants/chains'
+import {
+  getCanonicalVaultAddress,
+  getYieldDataAddress,
+  isYBoldAddress,
+  isYvUsdAddress,
+  YBOLD_CHAIN_ID,
+  YBOLD_STAKING_ADDRESS,
+  YVUSD_DESCRIPTION
+} from '@/constants/featuredVaults'
 import type { VaultOverrideConfig } from '@/constants/vaultOverrides'
 import { useVaults } from '@/contexts/useVaults'
 import { useRestTimeseries } from '@/hooks/useRestTimeseries'
 import { fetchKongVaultSnapshotRaw } from '@/lib/kong-vault-client'
 import { mapKongSnapshotToVaultExtended } from '@/lib/kong-vault-derivation'
+import { fetchYvUsdAprs, getYvUsdApiStrategyApyByAddress, getYvUsdApiVault } from '@/lib/yvusd-apr-client'
 import type { TimeseriesDataPoint } from '@/types/dataTypes'
 import type { KongVaultSnapshot } from '@/types/kong'
 import type { Vault, VaultExtended } from '@/types/vaultTypes'
@@ -49,6 +59,8 @@ interface UseVaultPageDataReturn {
   isBlacklisted: boolean
   blacklistReason?: string
   overrideConfig?: VaultOverrideConfig
+  canonicalVaultAddress: string
+  yieldDataAddress: string
 }
 
 const toBaseVaultExtended = (vault: Vault | null): VaultExtended | null => {
@@ -64,16 +76,79 @@ const toBaseVaultExtended = (vault: Vault | null): VaultExtended | null => {
   }
 }
 
+const mergeYBoldDetails = (baseVault: VaultExtended, stakedVault: VaultExtended): VaultExtended => ({
+  ...baseVault,
+  name: 'yBOLD',
+  symbol: 'yBOLD',
+  apy: stakedVault.apy ?? baseVault.apy,
+  fees: {
+    ...baseVault.fees,
+    performanceFee: stakedVault.fees?.performanceFee ?? baseVault.fees.performanceFee
+  },
+  performanceFee: stakedVault.performanceFee ?? baseVault.performanceFee,
+  forwardApyNet: stakedVault.forwardApyNet ?? baseVault.forwardApyNet,
+  strategyForwardAprs: stakedVault.strategyForwardAprs ?? baseVault.strategyForwardAprs
+})
+
+const normalizeYvUsdDetails = (vault: VaultExtended): VaultExtended => ({
+  ...vault,
+  name: 'yvUSD',
+  symbol: 'yvUSD',
+  meta: {
+    ...vault.meta,
+    description: YVUSD_DESCRIPTION,
+    displayName: 'yvUSD',
+    displaySymbol: 'yvUSD',
+    protocols: vault.meta?.protocols ?? [],
+    token: vault.meta?.token ?? {
+      category: '',
+      description: '',
+      displayName: '',
+      displaySymbol: '',
+      icon: '',
+      type: ''
+    }
+  }
+})
+
+const applyYvUsdAprData = (
+  vault: VaultExtended,
+  aprData: Awaited<ReturnType<typeof fetchYvUsdAprs>> | undefined
+): VaultExtended => {
+  const yvUsdVault = getYvUsdApiVault(aprData, vault.address)
+  if (!yvUsdVault) {
+    return vault
+  }
+
+  return {
+    ...vault,
+    apy: {
+      ...vault.apy,
+      grossApr: yvUsdVault.apr ?? vault.apy?.grossApr ?? 0,
+      net: yvUsdVault.apy ?? vault.apy?.net ?? 0,
+      weeklyNet: yvUsdVault.apy ?? vault.apy?.weeklyNet,
+      monthlyNet: yvUsdVault.apy ?? vault.apy?.monthlyNet,
+      inceptionNet: vault.apy?.inceptionNet ?? yvUsdVault.apy ?? 0
+    },
+    forwardApyNet: yvUsdVault.apy ?? vault.forwardApyNet,
+    yvUsdStrategyApyByAddress: getYvUsdApiStrategyApyByAddress(yvUsdVault)
+  }
+}
+
 /**
  * Coordinates data fetching for the vault page and manages loading states
  * Uses Kong REST for vault details and timeseries data
  */
 export function useVaultPageData({ vaultAddress, vaultChainId }: UseVaultPageDataProps): UseVaultPageDataReturn {
-  const isBlacklisted = isVaultBlacklisted(vaultChainId, vaultAddress)
-  const blacklistReason = getVaultBlacklistReason(vaultChainId, vaultAddress)
-  const overrideConfig = getVaultOverride(vaultChainId, vaultAddress)
+  const canonicalVaultAddress = getCanonicalVaultAddress(vaultChainId, vaultAddress)
+  const yieldDataAddress = getYieldDataAddress(vaultChainId, vaultAddress)
+  const isYBold = isYBoldAddress(vaultChainId, vaultAddress)
+  const isYvUsd = isYvUsdAddress(vaultChainId, vaultAddress)
+  const isBlacklisted = isVaultBlacklisted(vaultChainId, canonicalVaultAddress)
+  const blacklistReason = getVaultBlacklistReason(vaultChainId, canonicalVaultAddress)
+  const overrideConfig = getVaultOverride(vaultChainId, canonicalVaultAddress)
   const { vaults } = useVaults()
-  const normalizedAddress = vaultAddress.toLowerCase()
+  const normalizedAddress = canonicalVaultAddress.toLowerCase()
 
   const baseVault = useMemo(() => {
     const matchedVault =
@@ -89,18 +164,49 @@ export function useVaultPageData({ vaultAddress, vaultChainId }: UseVaultPageDat
     error: snapshotError
   } = useQuery<KongVaultSnapshot | null, Error>({
     queryKey: ['kong', 'vault', 'snapshot', vaultChainId, normalizedAddress],
-    queryFn: () => fetchKongVaultSnapshotRaw(vaultChainId, vaultAddress),
+    queryFn: () => fetchKongVaultSnapshotRaw(vaultChainId, canonicalVaultAddress),
     staleTime: 30 * 1000,
-    enabled: Boolean(vaultAddress)
+    enabled: Boolean(canonicalVaultAddress)
+  })
+
+  const { data: yBoldStakedSnapshot } = useQuery<KongVaultSnapshot | null, Error>({
+    queryKey: ['kong', 'vault', 'snapshot', YBOLD_CHAIN_ID, YBOLD_STAKING_ADDRESS.toLowerCase()],
+    queryFn: () => fetchKongVaultSnapshotRaw(YBOLD_CHAIN_ID, YBOLD_STAKING_ADDRESS),
+    staleTime: 30 * 1000,
+    enabled: isYBold
+  })
+
+  const { data: yvUsdAprData } = useQuery({
+    queryKey: ['yvusd', 'aprs'],
+    queryFn: fetchYvUsdAprs,
+    staleTime: 30 * 1000,
+    refetchInterval: 60 * 1000,
+    enabled: isYvUsd
   })
 
   const vaultDetails = useMemo(() => {
-    if (!snapshotData) {
-      return baseVault ? applyVaultOverride(baseVault) : null
+    const mappedBaseVault = snapshotData
+      ? mapKongSnapshotToVaultExtended(snapshotData, baseVault)
+      : baseVault
+        ? { ...baseVault }
+        : null
+
+    if (!mappedBaseVault) {
+      return null
     }
 
-    return applyVaultOverride(mapKongSnapshotToVaultExtended(snapshotData, baseVault))
-  }, [snapshotData, baseVault])
+    const normalizedBaseVault = isYvUsd
+      ? applyYvUsdAprData(normalizeYvUsdDetails(mappedBaseVault), yvUsdAprData)
+      : mappedBaseVault
+
+    if (!isYBold || !yBoldStakedSnapshot) {
+      return applyVaultOverride(normalizedBaseVault)
+    }
+
+    return applyVaultOverride(
+      mergeYBoldDetails(normalizedBaseVault, mapKongSnapshotToVaultExtended(yBoldStakedSnapshot, null))
+    )
+  }, [snapshotData, baseVault, isYBold, isYvUsd, yBoldStakedSnapshot, yvUsdAprData])
 
   const vaultSnapshotTimestampUtc = useMemo(() => {
     const snapshotBlockTime = snapshotData?.blockTime
@@ -130,7 +236,7 @@ export function useVaultPageData({ vaultAddress, vaultChainId }: UseVaultPageDat
   } = useRestTimeseries({
     segment: 'apy-historical',
     chainId: vaultChainId,
-    address: vaultAddress,
+    address: yieldDataAddress,
     components: ['weeklyNet']
   })
 
@@ -142,7 +248,7 @@ export function useVaultPageData({ vaultAddress, vaultChainId }: UseVaultPageDat
   } = useRestTimeseries({
     segment: 'apy-historical',
     chainId: vaultChainId,
-    address: vaultAddress,
+    address: yieldDataAddress,
     components: ['monthlyNet']
   })
 
@@ -150,7 +256,7 @@ export function useVaultPageData({ vaultAddress, vaultChainId }: UseVaultPageDat
   const { data: aprOracleAprData } = useRestTimeseries({
     segment: 'apr-oracle',
     chainId: vaultChainId,
-    address: vaultAddress,
+    address: yieldDataAddress,
     components: ['apr'],
     enabled: isV3Vault
   })
@@ -163,7 +269,7 @@ export function useVaultPageData({ vaultAddress, vaultChainId }: UseVaultPageDat
   } = useRestTimeseries({
     segment: 'tvl',
     chainId: vaultChainId,
-    address: vaultAddress
+    address: canonicalVaultAddress
   })
 
   // Fetch PPS data from REST API
@@ -174,7 +280,7 @@ export function useVaultPageData({ vaultAddress, vaultChainId }: UseVaultPageDat
   } = useRestTimeseries({
     segment: 'pps',
     chainId: vaultChainId,
-    address: vaultAddress,
+    address: yieldDataAddress,
     components: ['humanized']
   })
 
@@ -219,6 +325,8 @@ export function useVaultPageData({ vaultAddress, vaultChainId }: UseVaultPageDat
     hasErrors,
     isBlacklisted,
     blacklistReason,
-    overrideConfig
+    overrideConfig,
+    canonicalVaultAddress,
+    yieldDataAddress
   }
 }
