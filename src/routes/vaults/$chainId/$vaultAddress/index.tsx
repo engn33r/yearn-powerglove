@@ -13,6 +13,7 @@ import type { Address } from 'viem'
 import { StrategiesPanel } from '@/components/strategies-panel/index'
 import { VaultPageBreadcrumb, VaultPageLayout } from '@/components/vault-page'
 import type { ChainId } from '@/constants/chains'
+import { isYvUsdAddress } from '@/constants/featuredVaults'
 import { useTokenAssetsContext } from '@/contexts/useTokenAssets'
 import { useAprOracle } from '@/hooks/useAprOracle'
 import { useChartData } from '@/hooks/useChartData'
@@ -20,6 +21,7 @@ import { useMainInfoPanelData } from '@/hooks/useMainInfoPanelData'
 import { useReallocationData } from '@/hooks/useReallocationData'
 // Import our new data hooks and layout components
 import { useVaultPageData } from '@/hooks/useVaultPageData'
+import { useYvUsdChartData } from '@/hooks/useYvUsdChartData'
 import { formatPercent } from '@/lib/formatters'
 import { isLegacyVaultType } from '@/utils/vaultDataUtils'
 import { getVaultOverrideDisplayItems } from '@/utils/vaultOverrides'
@@ -62,6 +64,18 @@ function SingleVaultPage() {
     ppsData,
     isLoading: chartsLoading,
     hasErrors: chartsError
+  })
+
+  const isYvUsd = isYvUsdAddress(vaultChainId, vaultAddress)
+  const {
+    yvUsdChartData,
+    isLoading: yvUsdChartsLoading,
+    hasErrors: yvUsdChartsError
+  } = useYvUsdChartData({
+    enabled: isYvUsd,
+    unlockedAprApyData: transformedAprApyData,
+    unlockedTvlData: transformedTvlData,
+    unlockedPpsData: transformedPpsData
   })
 
   const { data: vaultAprOracle } = useAprOracle({
@@ -134,7 +148,7 @@ function SingleVaultPage() {
 
   return (
     <VaultPageLayout isLoading={isInitialLoading} hasErrors={hasErrors}>
-      <VaultPageBreadcrumb vaultName={vaultDetails.name} />
+      <VaultPageBreadcrumb vaultName={isYvUsd ? 'yvUSD' : vaultDetails.name} />
       <div className="relative">
         {isBlacklisted && <div className="absolute inset-0 z-20 rounded-lg bg-white/40 backdrop-blur-sm" />}
         {isBlacklisted && (
@@ -175,8 +189,9 @@ function SingleVaultPage() {
               aprApyData={transformedAprApyData}
               tvlData={transformedTvlData}
               ppsData={transformedPpsData}
-              isLoading={chartsLoading}
-              hasErrors={chartsError}
+              yvUsdChartData={yvUsdChartData}
+              isLoading={chartsLoading || yvUsdChartsLoading}
+              hasErrors={chartsError || yvUsdChartsError}
             />
           </Suspense>
           <StrategiesPanel
