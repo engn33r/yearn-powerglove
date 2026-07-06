@@ -2,6 +2,7 @@
 // to USD per day. The existing vault-events lib keys every query to a single
 // vault; this module drops that filter to fetch activity across all Yearn
 // vaults, with a time window and pagination cap to bound query cost.
+import { isExcludedTransactionFrom } from '@/constants/excludedAddresses'
 import { priceKey } from '@/lib/asset-prices'
 import { queryEnvio } from '@/lib/envio-client'
 import type { Vault } from '@/types/vaultTypes'
@@ -62,6 +63,7 @@ interface RawDepositRow {
   vaultAddress: string
   transactionHash: string
   owner?: string | null
+  transactionFrom?: string | null
 }
 interface RawWithdrawRow {
   assets: string
@@ -70,6 +72,7 @@ interface RawWithdrawRow {
   vaultAddress: string
   transactionHash: string
   receiver?: string | null
+  transactionFrom?: string | null
 }
 
 interface RawProtocolActivity {
@@ -84,13 +87,13 @@ const PROTOCOL_ACTIVITY_QUERY = `
       order_by: { blockTimestamp: desc }
       limit: $limit
       offset: $offset
-    ) { assets blockTimestamp chainId vaultAddress transactionHash owner }
+    ) { assets blockTimestamp chainId vaultAddress transactionHash owner transactionFrom }
     Withdraw(
       where: { blockTimestamp: { _gte: $since } }
       order_by: { blockTimestamp: desc }
       limit: $limit
       offset: $offset
-    ) { assets blockTimestamp chainId vaultAddress transactionHash receiver }
+    ) { assets blockTimestamp chainId vaultAddress transactionHash receiver transactionFrom }
   }
 `
 
@@ -138,6 +141,8 @@ async function paginateType(
     const rows = type === 'deposit' ? data.Deposit : data.Withdraw
     for (const row of rows) {
       if (row.blockTimestamp < sinceSeconds) continue
+      // Skip DAO/treasury management moves so activity reflects organic user flows only.
+      if (isExcludedTransactionFrom(row.transactionFrom)) continue
       sink.push({
         type,
         chainId: row.chainId,

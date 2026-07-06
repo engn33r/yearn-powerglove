@@ -1,6 +1,8 @@
+import { Info } from 'lucide-react'
 import React, { useMemo } from 'react'
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from 'recharts'
 import { FixedHeightChartContainer } from '@/components/charts/chart-container'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { formatTvlDisplay } from '@/lib/formatters'
 import type { DayActivity } from '@/lib/protocol-activity'
 
@@ -32,21 +34,35 @@ function ProtocolActivityChartImpl({ byDay, isLoading }: ProtocolActivityChartPr
 
   return (
     <section className="flex h-full flex-col border border-border bg-white">
-      <div className="flex flex-col gap-1 p-4 sm:p-6">
-        <h2 className="text-sm font-semibold text-foreground">Protocol activity</h2>
-        <p className="text-xs text-gray-500">
-          Deposits vs withdrawals (USD) · last 30 days
+      <TooltipProvider>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 p-4 sm:p-6">
+          <div className="flex items-center gap-1">
+            <h2 className="text-sm font-semibold text-foreground">Protocol activity</h2>
+            {/* Descriptive subtitle moved into an info tooltip (matches KPI cards) to recover a line of vertical space. */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="shrink-0 text-gray-400 transition-colors hover:text-gray-600"
+                  aria-label="More info: Protocol activity"
+                >
+                  <Info className="h-3 w-3" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Deposits vs withdrawals (USD) · last 30 days</TooltipContent>
+            </Tooltip>
+          </div>
+          {/* Color-coded 30d totals stay inline; green/red mirror the bar series. */}
           {!isLoading && byDay.length > 0 && (
-            <>
-              {' · '}
+            <span className="text-xs">
               <span className="text-emerald-600">+{formatTvlDisplay(totalDeposits)}</span>
-              {' / '}
+              <span className="text-gray-400"> / </span>
               <span className="text-red-500">-{formatTvlDisplay(totalWithdrawals)}</span>
-            </>
+            </span>
           )}
-        </p>
-      </div>
-      <div className="flex min-h-0 flex-1 flex-col px-4 pb-5 sm:px-6">
+        </div>
+      </TooltipProvider>
+      <div className="flex min-h-0 flex-1 flex-col px-4 pb-2 sm:px-6">
         <FixedHeightChartContainer heightClassName="min-h-[220px] flex-1 sm:min-h-[260px]">
           {isLoading && byDay.length === 0 ? (
             <div className="flex h-full items-center justify-center text-xs text-gray-400">Loading activity…</div>
@@ -71,7 +87,7 @@ function ProtocolActivityChartImpl({ byDay, isLoading }: ProtocolActivityChartPr
                   axisLine={false}
                   width={52}
                 />
-                <Tooltip
+                <RechartsTooltip
                   formatter={tooltipFormatter}
                   labelFormatter={(label: number) => formatDay(label)}
                   contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12, background: '#fff' }}

@@ -1,3 +1,4 @@
+import { isExcludedTransactionFrom } from '@/constants/excludedAddresses'
 import { queryEnvio } from '@/lib/envio-client'
 import type { VaultActivityEvent, VaultEventType, VaultManagementEvent, VaultUserEvent } from '@/types/vaultEventTypes'
 
@@ -86,7 +87,8 @@ const USER_EVENT_DEFINITIONS: readonly EnvioEventDefinition<VaultUserEvent>[] = 
       'blockNumber',
       'blockTimestamp',
       'logIndex',
-      'transactionHash'
+      'transactionHash',
+      'transactionFrom'
     ],
     map: (row) => ({
       ...mapBaseEvent('deposit', row),
@@ -115,7 +117,8 @@ const USER_EVENT_DEFINITIONS: readonly EnvioEventDefinition<VaultUserEvent>[] = 
       'blockNumber',
       'blockTimestamp',
       'logIndex',
-      'transactionHash'
+      'transactionHash',
+      'transactionFrom'
     ],
     map: (row) => ({
       ...mapBaseEvent('withdraw', row),
@@ -1042,7 +1045,9 @@ function dedupEvents(events: VaultUserEvent[]): VaultUserEvent[] {
 
 export async function fetchVaultUserEvents(vaultAddress: string, chainId: number): Promise<VaultUserEvent[]> {
   const events = await fetchPaginatedEnvioEvents('GetVaultUserEvents', USER_EVENT_DEFINITIONS, vaultAddress, chainId)
-  return dedupEvents(events)
+  // Drop DAO/treasury management moves so the per-vault user-event view shows organic activity only.
+  const organic = events.filter((event) => !isExcludedTransactionFrom(event.transactionFrom))
+  return dedupEvents(organic)
 }
 
 export async function fetchVaultManagementEvents(

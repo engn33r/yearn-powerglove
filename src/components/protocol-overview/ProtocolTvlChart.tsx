@@ -113,13 +113,8 @@ function ProtocolTvlChartImpl({ series, tvlError }: ProtocolTvlChartProps) {
 
   return (
     <section className="border border-border bg-white">
-      <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-6">
-        <div className="space-y-1">
-          <h2 className="text-sm font-semibold text-foreground">Protocol TVL by chain</h2>
-          <p className="text-xs text-gray-500">
-            Stacked TVL across chains · {formatTvlDisplay(grandTotal)} total · via DefiLlama
-          </p>
-        </div>
+      <div className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
+        <h2 className="text-sm font-semibold text-foreground">Protocol TVL by chain</h2>
         <div className="flex shrink-0 flex-wrap gap-2">
           {TIMEFRAMES.map((tf) => (
             <button
@@ -137,7 +132,7 @@ function ProtocolTvlChartImpl({ series, tvlError }: ProtocolTvlChartProps) {
       </div>
 
       <div className="px-4 pb-2 sm:px-6">
-        <FixedHeightChartContainer heightClassName="h-[210px] sm:h-[270px] lg:h-[300px]">
+        <FixedHeightChartContainer heightClassName="h-[180px] sm:h-[220px] lg:h-[240px]">
           {data.length === 0 ? (
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 text-xs text-gray-400">
               {tvlError ? 'Historical TVL unavailable' : 'Loading historical TVL…'}
@@ -189,7 +184,7 @@ function ProtocolTvlChartImpl({ series, tvlError }: ProtocolTvlChartProps) {
       </div>
 
       {/* Legend: current TVL + share per chain (derived from the series' latest points) */}
-      <div className="flex flex-wrap gap-x-4 gap-y-2 px-4 pb-5 pt-2 sm:px-6">
+      <div className="flex flex-wrap gap-x-4 gap-y-2 px-4 pb-3 pt-1.5 sm:px-6">
         {latestByChain.map((c) => {
           const share = grandTotal > 0 ? (c.tvl / grandTotal) * 100 : 0
           return (

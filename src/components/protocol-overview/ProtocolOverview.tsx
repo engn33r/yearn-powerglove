@@ -24,7 +24,7 @@ export function ProtocolOverview() {
   const activity = useProtocolActivity(safeVaults)
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <ProtocolKpis vaults={safeVaults} volume24hUsd={activity.volume24hUsd} />
 
       <ProtocolTvlChart series={series} tvlError={tvlError} />

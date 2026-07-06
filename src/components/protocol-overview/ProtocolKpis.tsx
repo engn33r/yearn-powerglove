@@ -18,7 +18,7 @@ interface KpiCardProps {
 
 const KpiCard = React.memo(function KpiCard({ label, value, sublabel }: KpiCardProps) {
   return (
-    <div className="flex min-w-0 flex-col gap-1 border border-border bg-white p-3 sm:p-4">
+    <div className="flex min-w-0 flex-col gap-1 border border-border bg-white p-2.5 sm:p-3">
       <div className="flex min-w-0 items-center gap-1">
         <span className="truncate text-[11px] font-medium uppercase tracking-[0.08em] text-gray-500">{label}</span>
         {sublabel ? (

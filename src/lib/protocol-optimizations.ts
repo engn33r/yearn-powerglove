@@ -182,16 +182,19 @@ export function dedupeLatestOptimizations(records: RawOptimizationRecord[]): Raw
 }
 
 /**
- * Shape + order the raw records for the optimizer sidebar: largest APR delta
- * first (most impactful optimization on top), nulls last, capped at `limit`.
+ * Shape + order the raw records for the optimizer sidebar: most recent
+ * optimization first (by timestamp, descending), records without a timestamp
+ * last, capped at `limit`.
  */
 export function shapeOptimizerVaults(records: RawOptimizationRecord[], limit: number): ProtocolOptimizationItem[] {
   return dedupeLatestOptimizations(records)
     .map(shapeOptimizationItem)
     .sort((a, b) => {
-      if (a.aprDeltaPct !== null && b.aprDeltaPct !== null) return b.aprDeltaPct - a.aprDeltaPct
-      if (a.aprDeltaPct !== null) return -1
-      if (b.aprDeltaPct !== null) return 1
+      const aT = a.timestampSeconds
+      const bT = b.timestampSeconds
+      if (aT !== null && bT !== null) return bT - aT
+      if (aT !== null) return -1
+      if (bT !== null) return 1
       return a.vault.localeCompare(b.vault)
     })
     .slice(0, limit)

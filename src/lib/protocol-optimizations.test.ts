@@ -29,6 +29,9 @@ const baseRaw = (overrides: Partial<RawOptimizationRecord>): RawOptimizationReco
   ...overrides
 })
 
+const atTimestamp = (vault: string, latest: string | null): RawOptimizationRecord =>
+  baseRaw({ vault, source: { ...baseRaw({}).source, latestMatchedTimestampUtc: latest } })
+
 describe('parseOptimizerTimestamp', () => {
   it('parses the UTC timestamp string to seconds', () => {
     expect(parseOptimizerTimestamp('2026-07-02 06:14:29 UTC')).toBeGreaterThan(0)
@@ -101,26 +104,23 @@ describe('shapeOptimizationItem', () => {
 })
 
 describe('shapeOptimizerVaults', () => {
-  it('orders by APR delta descending and applies the limit', () => {
+  it('orders by timestamp descending (most recent first) and applies the limit', () => {
     const records = [
-      baseRaw({ vault: '0xLOW', currentApr: 300, proposedApr: 310 }), // +0.10
-      baseRaw({ vault: '0xHIGH', currentApr: 200, proposedApr: 400 }), // +2.00
-      baseRaw({ vault: '0xMID', currentApr: 200, proposedApr: 300 }) // +1.00
+      atTimestamp('0xOLD', '2026-06-01 00:00:00 UTC'),
+      atTimestamp('0xNEW', '2026-07-02 06:14:29 UTC'),
+      atTimestamp('0xMID', '2026-06-15 00:00:00 UTC')
     ]
     const vaults = shapeOptimizerVaults(records, 2)
     expect(vaults).toHaveLength(2)
-    expect(vaults[0].vault).toBe('0xHIGH')
+    expect(vaults[0].vault).toBe('0xNEW')
     expect(vaults[1].vault).toBe('0xMID')
   })
 
-  it('places records without an APR delta after delta ones', () => {
-    const records = [
-      baseRaw({ vault: '0xNOD', currentApr: Number.NaN, proposedApr: Number.NaN }),
-      baseRaw({ vault: '0xDELTA', currentApr: 200, proposedApr: 300 })
-    ]
+  it('places records without a timestamp after timestamped ones', () => {
+    const records = [atTimestamp('0xNONE', null), atTimestamp('0xTS', '2026-07-02 06:14:29 UTC')]
     const vaults = shapeOptimizerVaults(records, 5)
-    expect(vaults[0].vault).toBe('0xDELTA')
-    expect(vaults[1].vault).toBe('0xNOD')
+    expect(vaults[0].vault).toBe('0xTS')
+    expect(vaults[1].vault).toBe('0xNONE')
   })
 })
 

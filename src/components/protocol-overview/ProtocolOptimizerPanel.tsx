@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import React, { useMemo, useState } from 'react'
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -6,9 +7,18 @@ import type { ChainId } from '@/constants/chains'
 import { CHAIN_ID_TO_ICON, CHAIN_ID_TO_NAME } from '@/constants/chains'
 import { useProtocolOptimizations } from '@/hooks/useProtocolOptimizations'
 import { formatPercent, formatTvlDisplay } from '@/lib/formatters'
+import { fetchStrategyDisplayNames } from '@/lib/kong-strategy-names'
 import type { ProtocolOptimizationItem, StrategyAllocationRow } from '@/lib/protocol-optimizations'
 
 const vaultKey = (chainId: number | null, vault: string): string => `${chainId ?? 'x'}:${vault}`
+
+// Format the optimizer's unix-seconds timestamp as "YYYY-MM-DD HH:MM:SS UTC",
+// matching the timestamp shown on visual.yearn.dev.
+function formatOptimizerUtc(seconds: number): string {
+  const d = new Date(seconds * 1000)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())} UTC`
+}
 
 interface VaultRowProps {
   item: ProtocolOptimizationItem
@@ -64,10 +74,7 @@ function buildAllocationChartData(strategies: StrategyAllocationRow[]) {
   return [before, after]
 }
 
-const tooltipFormatter = (value: number, name: string): [string, string] => [
-  `${Number(value).toFixed(1)}%`,
-  `Strategy ${Number(String(name).replace('s', '')) + 1}`
-]
+const tooltipFormatter = (value: number, name: string): [string, string] => [`${Number(value).toFixed(1)}%`, name]
 
 /**
  * Compact recreation of visual.yearn.dev's core: a selectable sidebar of vaults
@@ -77,7 +84,7 @@ const tooltipFormatter = (value: number, name: string): [string, string] => [
  * vault needs no follow-up request.
  */
 function OptimizerPanelImpl() {
-  const { vaults, total, isLoading, isError } = useProtocolOptimizations()
+  const { vaults, isLoading, isError } = useProtocolOptimizations()
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
 
   const selected = useMemo(() => {
@@ -87,22 +94,40 @@ function OptimizerPanelImpl() {
 
   const chartData = useMemo(() => (selected ? buildAllocationChartData(selected.strategies) : []), [selected])
 
+  // Resolve real strategy names from Kong for the selected vault's chart — the
+  // reallocation API only carries strategy addresses. Cached per vault; falls
+  // back to the generic "Strategy N" label when a name can't be resolved.
+  const strategyAddresses = selected?.strategies.map((s) => s.key) ?? []
+  const strategyChainId = selected?.chainId ?? null
+  const namesQuery = useQuery({
+    queryKey: ['optimizer', 'strategy-names', strategyChainId, strategyAddresses],
+    queryFn: async () => {
+      if (strategyChainId === null) return {}
+      const map = await fetchStrategyDisplayNames(strategyChainId, strategyAddresses)
+      const names: Record<string, string> = {}
+      for (const [address, info] of Object.entries(map)) names[address] = info.name
+      return names
+    },
+    enabled: strategyChainId !== null && strategyAddresses.length > 0,
+    staleTime: 15 * 60 * 1000
+  })
+  const strategyNames = namesQuery.data ?? {}
+  const namedStrategies = useMemo(
+    () => (selected ? selected.strategies.map((s) => ({ ...s, name: strategyNames[s.key] ?? s.name })) : []),
+    [selected, strategyNames]
+  )
+
   return (
     <section className="border border-border bg-white">
       <div className="flex items-center justify-between p-4 pb-2 sm:p-6 sm:pb-2">
-        <div>
-          <h2 className="text-sm font-semibold text-foreground">Vault optimizer</h2>
-          <p className="text-xs text-gray-500">
-            Strategy allocation: current vs proposed
-            {!isError && total > 0 ? ` · ${total.toLocaleString()} vaults` : ''}
-          </p>
-        </div>
+        <h2 className="text-sm font-semibold text-foreground">Vault optimizer</h2>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 p-4 pt-2 sm:p-6 sm:pt-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 p-4 pt-2 pb-2 sm:p-6 sm:pt-2 sm:pb-2 lg:grid-cols-3">
         {/* Sidebar list */}
         <div className="lg:col-span-1">
-          <div className="max-h-[340px] overflow-y-auto pr-1">
+          {/* Sidebar capped below the chart column's natural height so the section bottom follows the legend, not the taller vault list. */}
+          <div className="max-h-[300px] overflow-y-auto pr-1">
             {isError ? (
               <div className="px-2 py-6 text-center text-xs text-gray-400">Optimizations unavailable</div>
             ) : isLoading && vaults.length === 0 ? (
@@ -144,6 +169,11 @@ function OptimizerPanelImpl() {
                     <span className="font-medium text-emerald-600">{formatPercent(selected.proposedAprPct)} APR</span>
                   </span>
                 ) : null}
+                {selected.timestampSeconds !== null ? (
+                  <span className="text-[11px] text-gray-400">
+                    Last optimized {formatOptimizerUtc(selected.timestampSeconds)}
+                  </span>
+                ) : null}
                 <Link
                   to="/vaults/$chainId/$vaultAddress"
                   params={{ chainId: (selected.chainId ?? 1).toString(), vaultAddress: selected.vault }}
@@ -176,11 +206,11 @@ function OptimizerPanelImpl() {
                       cursor={{ fill: 'rgba(6,87,249,0.05)' }}
                       contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12, background: '#fff' }}
                     />
-                    {selected.strategies.map((strategy, index) => (
+                    {namedStrategies.map((strategy, index) => (
                       <Bar
                         key={strategy.key}
                         dataKey={`s${index}`}
-                        name={`Strategy ${index + 1}`}
+                        name={strategy.name}
                         stackId="alloc"
                         fill={strategy.color}
                         isAnimationActive={false}
@@ -192,14 +222,17 @@ function OptimizerPanelImpl() {
 
               {/* Strategy legend: color + current→target allocation per strategy */}
               <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
-                {selected.strategies.map((strategy, index) => (
+                {namedStrategies.map((strategy) => (
                   <div key={strategy.key} className="flex items-center gap-1" title={strategy.shortAddress}>
                     <span
                       className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
                       style={{ backgroundColor: strategy.color }}
                     />
-                    <span className="text-[11px] text-gray-600">
-                      {index + 1}. {strategy.currentPct.toFixed(0)}% → {strategy.targetPct.toFixed(0)}%
+                    <span className="max-w-[140px] truncate text-[11px] font-medium text-gray-700">
+                      {strategy.name}
+                    </span>
+                    <span className="text-[11px] text-gray-400">
+                      {strategy.currentPct.toFixed(0)}% → {strategy.targetPct.toFixed(0)}%
                     </span>
                   </div>
                 ))}
