@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
+import { getAddress } from 'viem'
 import type { ChainId } from '@/constants/chains'
 import {
   getCanonicalVaultAddress,
@@ -135,13 +136,21 @@ const applyYvUsdAprData = (
   }
 }
 
+const normalizeVaultAddress = (address: string): string => {
+  try {
+    return getAddress(address)
+  } catch {
+    return address.toLowerCase()
+  }
+}
+
 /**
  * Coordinates data fetching for the vault page and manages loading states
  * Uses Kong REST for vault details and timeseries data
  */
 export function useVaultPageData({ vaultAddress, vaultChainId }: UseVaultPageDataProps): UseVaultPageDataReturn {
-  const canonicalVaultAddress = getCanonicalVaultAddress(vaultChainId, vaultAddress)
-  const yieldDataAddress = getYieldDataAddress(vaultChainId, vaultAddress)
+  const canonicalVaultAddress = normalizeVaultAddress(getCanonicalVaultAddress(vaultChainId, vaultAddress))
+  const yieldDataAddress = normalizeVaultAddress(getYieldDataAddress(vaultChainId, vaultAddress))
   const isYBold = isYBoldAddress(vaultChainId, vaultAddress)
   const isYvUsd = isYvUsdAddress(vaultChainId, vaultAddress)
   const isBlacklisted = isVaultBlacklisted(vaultChainId, canonicalVaultAddress)
