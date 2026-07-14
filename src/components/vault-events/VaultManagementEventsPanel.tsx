@@ -38,6 +38,7 @@ export const VaultManagementEventsPanel: React.FC<VaultManagementEventsPanelProp
     const {
       allEvents,
       allEventCount,
+      isTruncated,
       countsByType,
       availableEventTypeOptions,
       isLoading,
@@ -51,19 +52,24 @@ export const VaultManagementEventsPanel: React.FC<VaultManagementEventsPanelProp
     const eventAddressesKey = eventAddresses.map((address) => address.toLowerCase()).join(',')
 
     const {
-      data: userEvents = [],
+      data: userEventsResult,
       isLoading: isUserEventsLoading,
       error: userEventsError
     } = useQuery({
       queryKey: ['envio', 'vault-user-events', vaultChainId, eventAddressesKey],
-      queryFn: async () => {
-        const eventGroups = await Promise.all(
-          eventAddresses.map((address) => fetchVaultUserEvents(address, vaultChainId))
+      queryFn: async ({ signal }) => {
+        const results = await Promise.all(
+          eventAddresses.map((address) => fetchVaultUserEvents(address, vaultChainId, { signal }))
         )
-        return eventGroups.flat()
+        return {
+          events: results.flatMap((result) => result.events),
+          isTruncated: results.some((result) => result.isTruncated)
+        }
       },
       staleTime: 60 * 1000
     })
+    const userEvents = userEventsResult?.events ?? []
+    const hasTruncatedHistory = isTruncated || Boolean(userEventsResult?.isTruncated)
 
     const baseStrategyNamesByAddress = React.useMemo(() => {
       const byAddress: Record<string, string> = {}
@@ -186,6 +192,9 @@ export const VaultManagementEventsPanel: React.FC<VaultManagementEventsPanelProp
               <span>
                 <span className="font-semibold text-black">{activeTypeCount}</span> matching current filter
               </span>
+            ) : null}
+            {hasTruncatedHistory ? (
+              <span className="font-semibold text-amber-700">Showing a partial history capped to recent events</span>
             ) : null}
           </div>
           <div className="flex-1" />

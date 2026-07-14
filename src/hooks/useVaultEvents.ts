@@ -12,6 +12,7 @@ const normalizeVaultAddresses = (vaultAddress: string | string[] | undefined): s
 
 export function useVaultEvents(vaultAddress: string | string[] | undefined, chainId: ChainId | undefined) {
   const [allEvents, setAllEvents] = useState<VaultUserEvent[]>([])
+  const [isTruncated, setIsTruncated] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<Error | null>(null)
   const [eventType, setEventType] = useState<'all' | VaultUserEventType>('all')
@@ -22,6 +23,7 @@ export function useVaultEvents(vaultAddress: string | string[] | undefined, chai
   useEffect(() => {
     if (vaultAddresses.length === 0 || !chainId) {
       setAllEvents([])
+      setIsTruncated(false)
       setIsLoading(false)
       setCurrentPage(1)
       return
@@ -31,11 +33,15 @@ export function useVaultEvents(vaultAddress: string | string[] | undefined, chai
     setCurrentPage(1)
     setIsLoading(true)
     setError(null)
+    setIsTruncated(false)
 
-    Promise.all(vaultAddresses.map((address) => fetchVaultUserEvents(address, chainId)))
-      .then((eventGroups) => {
+    const controller = new AbortController()
+
+    Promise.all(vaultAddresses.map((address) => fetchVaultUserEvents(address, chainId, { signal: controller.signal })))
+      .then((results) => {
         if (!cancelled) {
-          setAllEvents(sortEventsChronologically(eventGroups.flat()))
+          setAllEvents(sortEventsChronologically(results.flatMap((result) => result.events)))
+          setIsTruncated(results.some((result) => result.isTruncated))
           setIsLoading(false)
         }
       })
@@ -48,6 +54,7 @@ export function useVaultEvents(vaultAddress: string | string[] | undefined, chai
 
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [vaultAddresses, chainId])
 
@@ -70,6 +77,7 @@ export function useVaultEvents(vaultAddress: string | string[] | undefined, chai
     depositCount,
     withdrawCount,
     transferCount,
+    isTruncated,
     isLoading,
     error,
     eventType,

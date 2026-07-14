@@ -16,6 +16,7 @@ const normalizeVaultAddresses = (vaultAddress: string | string[] | undefined): s
 
 export function useVaultManagementEvents(vaultAddress: string | string[] | undefined, chainId: ChainId | undefined) {
   const [allEvents, setAllEvents] = useState<VaultManagementEvent[]>([])
+  const [isTruncated, setIsTruncated] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<Error | null>(null)
   const [eventType, setEventType] = useState<'all' | VaultManagementEventType>('all')
@@ -26,6 +27,7 @@ export function useVaultManagementEvents(vaultAddress: string | string[] | undef
   useEffect(() => {
     if (vaultAddresses.length === 0 || !chainId) {
       setAllEvents([])
+      setIsTruncated(false)
       setIsLoading(false)
       setCurrentPage(1)
       return
@@ -35,11 +37,17 @@ export function useVaultManagementEvents(vaultAddress: string | string[] | undef
     setCurrentPage(1)
     setIsLoading(true)
     setError(null)
+    setIsTruncated(false)
 
-    Promise.all(vaultAddresses.map((address) => fetchVaultManagementEvents(address, chainId)))
-      .then((eventGroups) => {
+    const controller = new AbortController()
+
+    Promise.all(
+      vaultAddresses.map((address) => fetchVaultManagementEvents(address, chainId, { signal: controller.signal }))
+    )
+      .then((results) => {
         if (!cancelled) {
-          setAllEvents(sortEventsChronologically(eventGroups.flat()))
+          setAllEvents(sortEventsChronologically(results.flatMap((result) => result.events)))
+          setIsTruncated(results.some((result) => result.isTruncated))
           setIsLoading(false)
         }
       })
@@ -52,6 +60,7 @@ export function useVaultManagementEvents(vaultAddress: string | string[] | undef
 
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [vaultAddresses, chainId])
 
@@ -93,6 +102,7 @@ export function useVaultManagementEvents(vaultAddress: string | string[] | undef
     events: paginatedEvents,
     totalCount: filteredEvents.length,
     allEventCount: allEvents.length,
+    isTruncated,
     countsByType,
     availableEventTypeOptions,
     isLoading,

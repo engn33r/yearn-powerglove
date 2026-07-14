@@ -34,8 +34,8 @@ describe('useVaultManagementEvents', () => {
   })
 
   it('resets pagination when the selected vault changes', async () => {
-    fetchVaultManagementEventsMock.mockResolvedValueOnce(makeEvents(120, '0xvault-a'))
-    fetchVaultManagementEventsMock.mockResolvedValueOnce(makeEvents(10, '0xvault-b'))
+    fetchVaultManagementEventsMock.mockResolvedValueOnce({ events: makeEvents(120, '0xvault-a'), isTruncated: false })
+    fetchVaultManagementEventsMock.mockResolvedValueOnce({ events: makeEvents(10, '0xvault-b'), isTruncated: false })
 
     const { result, rerender } = renderHook(
       ({ vaultAddress, chainId }) => useVaultManagementEvents(vaultAddress, chainId),
@@ -68,16 +68,27 @@ describe('useVaultManagementEvents', () => {
   })
 
   it('combines events for grouped vault addresses', async () => {
-    fetchVaultManagementEventsMock.mockResolvedValueOnce(makeEvents(2, '0xvault-a'))
-    fetchVaultManagementEventsMock.mockResolvedValueOnce(makeEvents(3, '0xvault-b'))
+    fetchVaultManagementEventsMock.mockResolvedValueOnce({
+      events: makeEvents(2, '0xvault-a'),
+      isTruncated: false
+    })
+    fetchVaultManagementEventsMock.mockResolvedValueOnce({
+      events: makeEvents(3, '0xvault-b'),
+      isTruncated: true
+    })
 
     const { result } = renderHook(() => useVaultManagementEvents(['0xvault-a', '0xvault-b'], 1))
 
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
-    expect(fetchVaultManagementEventsMock).toHaveBeenCalledWith('0xvault-a', 1)
-    expect(fetchVaultManagementEventsMock).toHaveBeenCalledWith('0xvault-b', 1)
+    expect(fetchVaultManagementEventsMock).toHaveBeenCalledWith('0xvault-a', 1, {
+      signal: expect.any(AbortSignal)
+    })
+    expect(fetchVaultManagementEventsMock).toHaveBeenCalledWith('0xvault-b', 1, {
+      signal: expect.any(AbortSignal)
+    })
     expect(result.current.events).toHaveLength(5)
     expect(result.current.allEventCount).toBe(5)
+    expect(result.current.isTruncated).toBe(true)
   })
 })
