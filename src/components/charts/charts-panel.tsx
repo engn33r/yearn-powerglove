@@ -12,6 +12,7 @@ import { calculatePpsPeriodApy, getTimeframeLimit } from '@/components/charts/ch
 import PPSChart from '@/components/charts/PPSChart'
 import TVLChart from '@/components/charts/TVLChart'
 import YvUsdDualLineChart from '@/components/charts/YvUsdDualLineChart'
+import YvUsdTVLChart from '@/components/charts/YvUsdTVLChart'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -254,7 +255,7 @@ export function ChartsPanel(data: ChartData) {
           return (
             <FixedHeightChartContainer heightClassName={chartHeightClassName}>
               <ChartErrorBoundary>
-                <YvUsdDualLineChart chartData={yvUsdChartData.tvlData} timeframe={timeframe.value} valueType="tvl" />
+                <YvUsdTVLChart chartData={yvUsdChartData.tvlData} timeframe={timeframe.value} />
               </ChartErrorBoundary>
             </FixedHeightChartContainer>
           )
