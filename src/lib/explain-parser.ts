@@ -6,6 +6,8 @@ const STRATEGY_APR_LINE_PATTERN = /^\s*\((-?\d+(?:\.\d+)?)%\)\s*\((-?\d+(?:\.\d+
 
 const TOTAL_BPS = 10000
 const NORMALIZATION_TOLERANCE_BPS = 5
+const MAX_ALLOCATION_PERCENT = 100
+const MAX_APR_PERCENT = 10000
 
 export interface ExplainMetadata {
   vaultLabel: string | null
@@ -89,6 +91,14 @@ function percentToBps(percent: number): number {
   return Math.round(percent * 100)
 }
 
+function isFiniteAllocationPercent(value: number): boolean {
+  return Number.isFinite(value) && value >= 0 && value <= MAX_ALLOCATION_PERCENT
+}
+
+function isFiniteAprPercent(value: number): boolean {
+  return Number.isFinite(value) && value >= 0 && value <= MAX_APR_PERCENT
+}
+
 export function parseFilteredNoChangeStrategies(explain: string): ExplainNoChangeStrategy[] {
   const lines = explain.split('\n')
   const strategies: ExplainNoChangeStrategy[] = []
@@ -99,7 +109,7 @@ export function parseFilteredNoChangeStrategies(explain: string): ExplainNoChang
 
     const name = match[1]?.trim()
     const currentRatioPct = Number.parseFloat(match[2])
-    if (!name || !Number.isFinite(currentRatioPct) || currentRatioPct <= 0) continue
+    if (!name || !isFiniteAllocationPercent(currentRatioPct) || currentRatioPct <= 0) continue
 
     let currentApr: number | null = null
     let targetApr: number | null = null
@@ -109,10 +119,10 @@ export function parseFilteredNoChangeStrategies(explain: string): ExplainNoChang
       if (aprMatch) {
         const currentAprPct = Number.parseFloat(aprMatch[2])
         const targetAprPct = Number.parseFloat(aprMatch[3])
-        if (Number.isFinite(currentAprPct) && currentAprPct >= 0) {
+        if (isFiniteAprPercent(currentAprPct)) {
           currentApr = percentToBps(currentAprPct)
         }
-        if (Number.isFinite(targetAprPct) && targetAprPct >= 0) {
+        if (isFiniteAprPercent(targetAprPct)) {
           targetApr = percentToBps(targetAprPct)
         }
       }
@@ -128,6 +138,19 @@ export function parseFilteredNoChangeStrategies(explain: string): ExplainNoChang
   }
 
   return strategies
+}
+
+function isValidStrategyDebtRatio(strategy: RawStrategyDebtRatio): boolean {
+  return (
+    Number.isFinite(strategy.currentRatio) &&
+    Number.isFinite(strategy.targetRatio) &&
+    strategy.currentRatio >= 0 &&
+    strategy.targetRatio >= 0 &&
+    strategy.currentRatio <= TOTAL_BPS &&
+    strategy.targetRatio <= TOTAL_BPS &&
+    (strategy.currentApr === null || strategy.currentApr === undefined || isFiniteAprPercent(strategy.currentApr)) &&
+    (strategy.targetApr === null || strategy.targetApr === undefined || isFiniteAprPercent(strategy.targetApr))
+  )
 }
 
 function buildSyntheticStrategyAddress(vaultAddress: string, strategyName: string, index: number, salt = 0): string {
@@ -172,6 +195,7 @@ export function augmentStrategiesFromExplain(
   const dedupedInputStrategies: RawStrategyDebtRatio[] = []
   const seenInputAddresses = new Set<string>()
   for (const strategy of strategies) {
+    if (!isValidStrategyDebtRatio(strategy)) continue
     const normalizedAddress = strategy.strategy.toLowerCase()
     if (seenInputAddresses.has(normalizedAddress)) continue
     seenInputAddresses.add(normalizedAddress)

@@ -13,6 +13,7 @@ import type { VaultExtended } from '@/types/vaultTypes'
 
 const TOTAL_BPS = 10000
 const NORMALIZATION_TOLERANCE_BPS = 5
+const MAX_APR_PERCENT = 10000
 
 interface RawVaultOptimization {
   vault: string
@@ -72,6 +73,54 @@ export function isMatchingReallocationRecord(
   }
 
   return true
+}
+
+function isFiniteBpsValue(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= TOTAL_BPS
+}
+
+function isFiniteAprPercent(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= MAX_APR_PERCENT
+}
+
+function isValidStrategyDebtRatio(strategy: RawStrategyDebtRatio): boolean {
+  return (
+    typeof strategy.strategy === 'string' &&
+    strategy.strategy.trim().length > 0 &&
+    isFiniteBpsValue(strategy.currentRatio) &&
+    isFiniteBpsValue(strategy.targetRatio) &&
+    (strategy.currentApr === null || strategy.currentApr === undefined || isFiniteAprPercent(strategy.currentApr)) &&
+    (strategy.targetApr === null || strategy.targetApr === undefined || isFiniteAprPercent(strategy.targetApr))
+  )
+}
+
+export function isValidOptimizationRecord(record: VaultOptimizationRecord): boolean {
+  if (!Array.isArray(record.strategyDebtRatios) || record.strategyDebtRatios.length === 0) {
+    return false
+  }
+
+  if (
+    !Number.isFinite(record.currentApr) ||
+    !Number.isFinite(record.proposedApr) ||
+    record.currentApr < 0 ||
+    record.proposedApr < 0 ||
+    record.currentApr > MAX_APR_PERCENT ||
+    record.proposedApr > MAX_APR_PERCENT
+  ) {
+    return false
+  }
+
+  const validStrategies = record.strategyDebtRatios.filter(isValidStrategyDebtRatio)
+  if (validStrategies.length !== record.strategyDebtRatios.length) {
+    return false
+  }
+
+  const totalCurrentBps = validStrategies.reduce((sum, strategy) => sum + strategy.currentRatio, 0)
+  const totalTargetBps = validStrategies.reduce((sum, strategy) => sum + strategy.targetRatio, 0)
+  return (
+    totalCurrentBps <= TOTAL_BPS + NORMALIZATION_TOLERANCE_BPS &&
+    totalTargetBps <= TOTAL_BPS + NORMALIZATION_TOLERANCE_BPS
+  )
 }
 
 function getReallocationApiUrl(): string {
@@ -324,9 +373,9 @@ export function useReallocationData(
         return null
       }
 
-      const validRecords = rawRecords.filter((record) => Array.isArray(record.strategyDebtRatios))
+      const validRecords = rawRecords.filter(isValidOptimizationRecord)
       if (validRecords.length === 0) {
-        console.warn(`[reallocation] No strategyDebtRatios in response for vault ${vaultAddress}`)
+        console.warn(`[reallocation] No valid reallocation records in response for vault ${vaultAddress}`)
         return null
       }
 
