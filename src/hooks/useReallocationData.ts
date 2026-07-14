@@ -428,7 +428,7 @@ export function useReallocationData(
       }
     },
     staleTime: 10 * 60 * 1000,
-    enabled: Boolean(vaultAddress && vaultChainId),
+    enabled: Boolean(vaultAddress && vaultChainId && currentVaultDetails?.address),
     retry: 1
   })
 

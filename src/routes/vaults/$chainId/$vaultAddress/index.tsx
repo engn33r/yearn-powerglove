@@ -44,6 +44,121 @@ export function isValidVaultRouteParams(chainId: string, vaultAddress: string): 
   return isSupportedChainId(Number(chainId)) && isAddress(vaultAddress)
 }
 
+type SingleVaultPageContentProps = {
+  vaultChainId: ChainId
+  vaultAddress: string
+  vaultDetails: ReturnType<typeof useVaultPageData>['vaultDetails']
+  vaultSnapshotTimestampUtc: string | null
+  isInitialLoading: boolean
+  hasErrors: boolean
+  chartsLoading: boolean
+  chartsError: boolean
+  overrideConfig: ReturnType<typeof useVaultPageData>['overrideConfig']
+  isBlacklisted: boolean
+  blacklistReason?: string
+  transformedAprApyData: ReturnType<typeof useChartData>['transformedAprApyData']
+  transformedTvlData: ReturnType<typeof useChartData>['transformedTvlData']
+  transformedPpsData: ReturnType<typeof useChartData>['transformedPpsData']
+  yvUsdChartData?: ReturnType<typeof useYvUsdChartData>['yvUsdChartData']
+  isYvUsd?: boolean
+  mainInfoPanelProps: ReturnType<typeof useMainInfoPanelData>
+  reallocationData: ReturnType<typeof useReallocationData>['data']
+}
+
+export function SingleVaultPageContent({
+  vaultChainId,
+  vaultDetails,
+  isInitialLoading,
+  hasErrors,
+  chartsLoading,
+  chartsError,
+  overrideConfig,
+  isBlacklisted,
+  blacklistReason,
+  transformedAprApyData,
+  transformedTvlData,
+  transformedPpsData,
+  yvUsdChartData,
+  isYvUsd = false,
+  mainInfoPanelProps,
+  reallocationData
+}: SingleVaultPageContentProps) {
+  const overrideItems = React.useMemo(() => getVaultOverrideDisplayItems(overrideConfig), [overrideConfig])
+
+  if (isBlacklisted) {
+    return (
+      <VaultPageLayout isLoading={isInitialLoading} hasErrors={hasErrors}>
+        <div className="relative">
+          <div className="absolute inset-0 z-20 rounded-lg bg-white/40 backdrop-blur-sm" />
+          <div className="relative z-30 flex items-start gap-3 border border-amber-300 bg-amber-50 px-4 py-3 text-amber-800">
+            <span aria-hidden="true" className="text-xl leading-none">
+              ⚠️
+            </span>
+            <div className="text-left">
+              <p className="font-semibold">Vault Data Unavailable</p>
+              <p className="text-sm text-amber-700">
+                {blacklistReason || 'This vault has been hidden until its data can be reviewed.'}
+              </p>
+            </div>
+          </div>
+        </div>
+      </VaultPageLayout>
+    )
+  }
+
+  if (!vaultDetails || !mainInfoPanelProps) {
+    return (
+      <VaultPageLayout isLoading={true} hasErrors={false}>
+        {null}
+      </VaultPageLayout>
+    )
+  }
+
+  return (
+    <VaultPageLayout isLoading={isInitialLoading} hasErrors={hasErrors}>
+      <VaultPageBreadcrumb vaultName={isYvUsd ? 'yvUSD' : vaultDetails.name} />
+      {overrideItems.length > 0 && (
+        <div className="relative z-30 flex items-start gap-3 border border-amber-300 bg-amber-50 px-4 py-3 text-amber-800">
+          <span aria-hidden="true" className="text-xl leading-none">
+            ⚠️
+          </span>
+          <div className="text-left">
+            <p className="font-semibold">Vault info override active</p>
+            <p className="text-sm text-amber-700">Certain values have been manually overridden.</p>
+            <ul className="mt-2 space-y-1 text-sm">
+              {overrideItems.map((item) => (
+                <li key={item.label}>
+                  <span className="font-medium">{item.label}:</span> <span>{item.value}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+      <div className="space-y-0">
+        <MainInfoPanel {...mainInfoPanelProps} />
+        <Suspense fallback={null}>
+          <ChartsPanel
+            aprApyData={transformedAprApyData}
+            tvlData={transformedTvlData}
+            ppsData={transformedPpsData}
+            yvUsdChartData={yvUsdChartData}
+            isLoading={chartsLoading}
+            hasErrors={chartsError}
+          />
+        </Suspense>
+        <StrategiesPanel
+          vaultChainId={vaultChainId}
+          vaultDetails={vaultDetails}
+          aboutDescription={mainInfoPanelProps.description}
+          aboutLink={mainInfoPanelProps.yearnVaultLink}
+          reallocationData={reallocationData}
+        />
+      </div>
+    </VaultPageLayout>
+  )
+}
+
 function ValidVaultPage({ chainId, vaultAddress }: { chainId: string; vaultAddress: string }) {
   const vaultChainId = Number(chainId) as ChainId
   const { assets: tokenAssets } = useTokenAssetsContext()
@@ -145,8 +260,6 @@ function ValidVaultPage({ chainId, vaultAddress }: { chainId: string; vaultAddre
     }
   }, [mainInfoPanelData, latestDerivedApy, legacyVault, yDaemonForwardApyFormatted, oracleOneDayApy])
 
-  const overrideItems = React.useMemo(() => getVaultOverrideDisplayItems(overrideConfig), [overrideConfig])
-
   const { data: reallocationData } = useReallocationData(
     vaultAddress,
     vaultChainId,
@@ -154,73 +267,27 @@ function ValidVaultPage({ chainId, vaultAddress }: { chainId: string; vaultAddre
     vaultSnapshotTimestampUtc
   )
 
-  // Ensure we have vault details and main info panel data
-  if (!vaultDetails || !mainInfoPanelProps) {
-    return (
-      <VaultPageLayout isLoading={true} hasErrors={false}>
-        {null}
-      </VaultPageLayout>
-    )
-  }
-
   return (
-    <VaultPageLayout isLoading={isInitialLoading} hasErrors={hasErrors}>
-      <VaultPageBreadcrumb vaultName={isYvUsd ? 'yvUSD' : vaultDetails.name} />
-      <div className="relative">
-        {isBlacklisted && <div className="absolute inset-0 z-20 rounded-lg bg-white/40 backdrop-blur-sm" />}
-        {isBlacklisted && (
-          <div className="relative z-30 flex items-start gap-3 border border-amber-300 bg-amber-50 px-4 py-3 text-amber-800">
-            <span aria-hidden="true" className="text-xl leading-none">
-              ⚠️
-            </span>
-            <div className="text-left">
-              <p className="font-semibold">Vault Data Unavailable</p>
-              <p className="text-sm text-amber-700">
-                {blacklistReason || 'This vault has been hidden until its data can be reviewed.'}
-              </p>
-            </div>
-          </div>
-        )}
-        {!isBlacklisted && overrideItems.length > 0 && (
-          <div className="relative z-30 flex items-start gap-3 border border-amber-300 bg-amber-50 px-4 py-3 text-amber-800">
-            <span aria-hidden="true" className="text-xl leading-none">
-              ⚠️
-            </span>
-            <div className="text-left">
-              <p className="font-semibold">Vault info override active</p>
-              <p className="text-sm text-amber-700">Certain values have been manually overridden.</p>
-              <ul className="mt-2 space-y-1 text-sm">
-                {overrideItems.map((item) => (
-                  <li key={item.label}>
-                    <span className="font-medium">{item.label}:</span> <span>{item.value}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        )}
-        <div className={`space-y-0 ${isBlacklisted ? 'relative z-10 pointer-events-none select-none' : ''}`}>
-          <MainInfoPanel {...mainInfoPanelProps} />
-          <Suspense fallback={null}>
-            <ChartsPanel
-              aprApyData={transformedAprApyData}
-              tvlData={transformedTvlData}
-              ppsData={transformedPpsData}
-              yvUsdChartData={yvUsdChartData}
-              isLoading={chartsLoading || yvUsdChartsLoading}
-              hasErrors={chartsError || yvUsdChartsError}
-            />
-          </Suspense>
-          <StrategiesPanel
-            vaultChainId={vaultChainId}
-            vaultDetails={vaultDetails}
-            aboutDescription={mainInfoPanelProps.description}
-            aboutLink={mainInfoPanelProps.yearnVaultLink}
-            reallocationData={reallocationData}
-          />
-        </div>
-      </div>
-    </VaultPageLayout>
+    <SingleVaultPageContent
+      vaultChainId={vaultChainId}
+      vaultAddress={vaultAddress}
+      vaultDetails={vaultDetails}
+      vaultSnapshotTimestampUtc={vaultSnapshotTimestampUtc}
+      isInitialLoading={isInitialLoading}
+      hasErrors={hasErrors}
+      chartsLoading={chartsLoading || yvUsdChartsLoading}
+      chartsError={chartsError || yvUsdChartsError}
+      overrideConfig={overrideConfig}
+      isBlacklisted={isBlacklisted}
+      blacklistReason={blacklistReason}
+      transformedAprApyData={transformedAprApyData}
+      transformedTvlData={transformedTvlData}
+      transformedPpsData={transformedPpsData}
+      yvUsdChartData={yvUsdChartData}
+      isYvUsd={isYvUsd}
+      mainInfoPanelProps={mainInfoPanelProps}
+      reallocationData={reallocationData}
+    />
   )
 }
 

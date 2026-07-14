@@ -3,9 +3,15 @@ import { getAddress } from 'viem'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useVaultPageData } from './useVaultPageData'
 
+const BLACKLISTED_ADDRESS = '0x1111111111111111111111111111111111111111'
+const OPEN_ADDRESS = '0x2222222222222222222222222222222222222222'
 const useRestTimeseriesMock = vi.fn()
 const useVaultsMock = vi.fn()
 const useQueryMock = vi.fn()
+const overrideMocks = vi.hoisted(() => ({
+  isVaultBlacklisted: vi.fn<(chainId: number, address: string) => boolean>(),
+  getVaultBlacklistReason: vi.fn<(chainId: number, address: string) => string | undefined>()
+}))
 
 vi.mock('@tanstack/react-query', () => ({
   useQuery: (...args: unknown[]) => useQueryMock(...args)
@@ -29,24 +35,26 @@ vi.mock('@/lib/kong-vault-derivation', () => ({
 
 vi.mock('@/utils/vaultOverrides', () => ({
   applyVaultOverride: (vault: unknown) => vault,
-  getVaultBlacklistReason: vi.fn(() => undefined),
+  getVaultBlacklistReason: (...args: [number, string]) => overrideMocks.getVaultBlacklistReason(...args),
   getVaultOverride: vi.fn(() => undefined),
-  isVaultBlacklisted: vi.fn(() => false)
+  isVaultBlacklisted: (...args: [number, string]) => overrideMocks.isVaultBlacklisted(...args)
 }))
 
 describe('useVaultPageData', () => {
   beforeEach(() => {
+    useQueryMock.mockReset()
+    useRestTimeseriesMock.mockReset()
+    useVaultsMock.mockReset()
+    overrideMocks.isVaultBlacklisted.mockReset()
+    overrideMocks.getVaultBlacklistReason.mockReset()
+
     useVaultsMock.mockReturnValue({ vaults: [] })
-    useQueryMock.mockReturnValue({
-      data: null,
-      isLoading: false,
-      error: null
-    })
-    useRestTimeseriesMock.mockReturnValue({
-      data: undefined,
-      isLoading: false,
-      error: null
-    })
+    useQueryMock.mockReturnValue({ data: null, isLoading: false, error: null })
+    useRestTimeseriesMock.mockReturnValue({ data: undefined, isLoading: false, error: null })
+    overrideMocks.isVaultBlacklisted.mockImplementation(
+      (chainId, address) => chainId === 1 && address.toLowerCase() === BLACKLISTED_ADDRESS
+    )
+    overrideMocks.getVaultBlacklistReason.mockReturnValue('Hidden vault')
   })
 
   it('passes a canonical vault address to timeseries queries', () => {
@@ -57,9 +65,28 @@ describe('useVaultPageData', () => {
 
     expect(useRestTimeseriesMock).toHaveBeenCalled()
     for (const call of useRestTimeseriesMock.mock.calls) {
-      expect(call[0]).toMatchObject({
-        address: canonicalAddress
-      })
+      expect(call[0]).toMatchObject({ address: canonicalAddress })
     }
+  })
+
+  it('disables all vault data queries for blacklisted vaults', () => {
+    const { result } = renderHook(() => useVaultPageData({ vaultAddress: BLACKLISTED_ADDRESS, vaultChainId: 1 }))
+
+    for (const call of useQueryMock.mock.calls) {
+      expect(call[0]).toEqual(expect.objectContaining({ enabled: false }))
+    }
+    for (const call of useRestTimeseriesMock.mock.calls) {
+      expect(call[0]).toEqual(expect.objectContaining({ enabled: false }))
+    }
+    expect(result.current.vaultDetails).toBeNull()
+  })
+
+  it('keeps detail queries enabled for valid non-blacklisted vaults', () => {
+    renderHook(() => useVaultPageData({ vaultAddress: OPEN_ADDRESS, vaultChainId: 1 }))
+
+    expect(useQueryMock).toHaveBeenCalledWith(expect.objectContaining({ enabled: true }))
+    expect(useRestTimeseriesMock).toHaveBeenCalledWith(
+      expect.objectContaining({ enabled: true, segment: 'apy-historical' })
+    )
   })
 })

@@ -157,6 +157,7 @@ export function useVaultPageData({ vaultAddress, vaultChainId }: UseVaultPageDat
   const isBlacklisted = isVaultBlacklisted(vaultChainId, canonicalVaultAddress)
   const blacklistReason = getVaultBlacklistReason(vaultChainId, canonicalVaultAddress)
   const overrideConfig = getVaultOverride(vaultChainId, canonicalVaultAddress)
+  const canFetchVaultData = hasValidRouteParams && !isBlacklisted
   const { vaults } = useVaults()
   const normalizedAddress = canonicalVaultAddress.toLowerCase()
 
@@ -176,14 +177,14 @@ export function useVaultPageData({ vaultAddress, vaultChainId }: UseVaultPageDat
     queryKey: ['kong', 'vault', 'snapshot', vaultChainId, normalizedAddress],
     queryFn: () => fetchKongVaultSnapshotRaw(vaultChainId, canonicalVaultAddress),
     staleTime: 30 * 1000,
-    enabled: hasValidRouteParams
+    enabled: canFetchVaultData
   })
 
   const { data: yBoldStakedSnapshot } = useQuery<KongVaultSnapshot | null, Error>({
     queryKey: ['kong', 'vault', 'snapshot', YBOLD_CHAIN_ID, YBOLD_STAKING_ADDRESS.toLowerCase()],
     queryFn: () => fetchKongVaultSnapshotRaw(YBOLD_CHAIN_ID, YBOLD_STAKING_ADDRESS),
     staleTime: 30 * 1000,
-    enabled: hasValidRouteParams && isYBold
+    enabled: canFetchVaultData && isYBold
   })
 
   const { data: yvUsdAprData } = useQuery({
@@ -191,7 +192,7 @@ export function useVaultPageData({ vaultAddress, vaultChainId }: UseVaultPageDat
     queryFn: fetchYvUsdAprs,
     staleTime: 30 * 1000,
     refetchInterval: 60 * 1000,
-    enabled: hasValidRouteParams && isYvUsd
+    enabled: canFetchVaultData && isYvUsd
   })
 
   const vaultDetails = useMemo(() => {
@@ -248,7 +249,7 @@ export function useVaultPageData({ vaultAddress, vaultChainId }: UseVaultPageDat
     chainId: vaultChainId,
     address: yieldDataAddress,
     components: ['weeklyNet'],
-    enabled: hasValidRouteParams
+    enabled: canFetchVaultData
   })
 
   // Fetch monthly APY data from REST API
@@ -261,7 +262,7 @@ export function useVaultPageData({ vaultAddress, vaultChainId }: UseVaultPageDat
     chainId: vaultChainId,
     address: yieldDataAddress,
     components: ['monthlyNet'],
-    enabled: hasValidRouteParams
+    enabled: canFetchVaultData
   })
 
   // Fetch APR-oracle APR timeseries from REST API (v3 only)
@@ -270,7 +271,7 @@ export function useVaultPageData({ vaultAddress, vaultChainId }: UseVaultPageDat
     chainId: vaultChainId,
     address: yieldDataAddress,
     components: ['apr'],
-    enabled: hasValidRouteParams && isV3Vault
+    enabled: canFetchVaultData && isV3Vault
   })
 
   // Fetch TVL data from REST API
@@ -282,7 +283,7 @@ export function useVaultPageData({ vaultAddress, vaultChainId }: UseVaultPageDat
     segment: 'tvl',
     chainId: vaultChainId,
     address: canonicalVaultAddress,
-    enabled: hasValidRouteParams
+    enabled: canFetchVaultData
   })
 
   // Fetch PPS data from REST API
@@ -295,7 +296,7 @@ export function useVaultPageData({ vaultAddress, vaultChainId }: UseVaultPageDat
     chainId: vaultChainId,
     address: yieldDataAddress,
     components: ['humanized'],
-    enabled: hasValidRouteParams
+    enabled: canFetchVaultData
   })
 
   // Calculate combined loading states
@@ -311,14 +312,14 @@ export function useVaultPageData({ vaultAddress, vaultChainId }: UseVaultPageDat
   }, [apyWeeklyError, apyMonthlyError, tvlError, ppsError])
 
   // Initial loading only waits for vault data (charts can load separately)
-  const isInitialLoading = hasValidRouteParams && vaultLoading
+  const isInitialLoading = canFetchVaultData && vaultLoading
 
   // Has errors if vault fails to load
-  const hasErrors = hasValidRouteParams && !!snapshotError
+  const hasErrors = canFetchVaultData && !!snapshotError
 
   return {
     // Vault data
-    vaultDetails,
+    vaultDetails: isBlacklisted ? null : vaultDetails,
     vaultLoading,
     vaultError: snapshotError ?? undefined,
     vaultSnapshotTimestampUtc,
