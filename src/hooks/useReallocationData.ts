@@ -43,6 +43,37 @@ interface ReallocationHistoryResult {
   changes: ReallocationNormalizedChange[]
 }
 
+function normalizeVaultAddress(value: string): string {
+  return value.toLowerCase()
+}
+
+export function isMatchingReallocationRecord(
+  raw: VaultOptimizationRecord,
+  requestedVaultAddress: string,
+  requestedChainId: ChainId
+): boolean {
+  const metadata = parseExplainMetadata(raw.explain)
+  const normalizedRequestedVaultAddress = normalizeVaultAddress(requestedVaultAddress)
+  const normalizedRecordVaultAddress = normalizeVaultAddress(raw.vault)
+  if (normalizedRecordVaultAddress !== normalizedRequestedVaultAddress) {
+    return false
+  }
+
+  if (raw.source.chainId !== null && raw.source.chainId !== requestedChainId) {
+    return false
+  }
+
+  if (metadata.vaultAddress !== null && metadata.vaultAddress !== normalizedRequestedVaultAddress) {
+    return false
+  }
+
+  if (metadata.chainId !== null && metadata.chainId !== requestedChainId) {
+    return false
+  }
+
+  return true
+}
+
 function getReallocationApiUrl(): string {
   return import.meta.env.VITE_PUBLIC_REALLOCATION_API_URL?.trim() ?? ''
 }
@@ -299,7 +330,15 @@ export function useReallocationData(
         return null
       }
 
-      const sortedRecords = [...validRecords].sort(
+      const matchingRecords = validRecords.filter((record) =>
+        isMatchingReallocationRecord(record, vaultAddress, vaultChainId)
+      )
+      if (matchingRecords.length === 0) {
+        console.warn(`[reallocation] No matching optimization history found for vault ${vaultAddress}`)
+        return null
+      }
+
+      const sortedRecords = [...matchingRecords].sort(
         (left, right) => getRecordTimestampMs(right) - getRecordTimestampMs(left)
       )
       const strategyAddresses = [
@@ -332,7 +371,7 @@ export function useReallocationData(
       }
 
       return {
-        vault: sortedRecords[0].vault,
+        vault: vaultAddress.toLowerCase(),
         vaultLabel: latestRecord.vaultLabel,
         chainId: latestRecord.chainId,
         chainName: latestRecord.chainName,

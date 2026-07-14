@@ -9,6 +9,7 @@ const NORMALIZATION_TOLERANCE_BPS = 5
 
 export interface ExplainMetadata {
   vaultLabel: string | null
+  vaultAddress: string | null
   chainId: number | null
   chainName: string | null
   tvl: number | null
@@ -71,10 +72,12 @@ export function parseExplainMetadata(explain: string): ExplainMetadata {
   const vaultMatch = firstLine.match(EXPLAIN_VAULT_LINE_PATTERN)
   const chainId = vaultMatch?.[2] ? Number.parseInt(vaultMatch[2], 10) : null
   const vaultLabel = vaultMatch?.[1]?.trim() ?? null
+  const vaultAddress = vaultMatch?.[3]?.toLowerCase() ?? null
   const { tvl, tvlUnit } = parseTvl(explain, vaultLabel)
 
   return {
     vaultLabel,
+    vaultAddress,
     chainId,
     chainName: getChainName(chainId),
     tvl,
