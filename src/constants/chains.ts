@@ -1,5 +1,7 @@
 export type ChainId = 1 | 10 | 100 | 137 | 250 | 8453 | 42161 | 747474 | 80094
 
+const SUPPORTED_CHAIN_IDS = [1, 10, 100, 137, 250, 8453, 42161, 747474, 80094] as const
+
 export const CHAIN_ID_TO_NAME: Record<ChainId, string> = {
   1: 'Ethereum',
   10: 'Optimism',
@@ -15,6 +17,10 @@ export const CHAIN_ID_TO_NAME: Record<ChainId, string> = {
 export function getChainIdByName(name: string): ChainId | undefined {
   const entry = Object.entries(CHAIN_ID_TO_NAME).find(([, chainName]) => chainName.toLowerCase() === name.toLowerCase())
   return entry ? (Number(entry[0]) as ChainId) : undefined
+}
+
+export function isSupportedChainId(chainId: number): chainId is ChainId {
+  return SUPPORTED_CHAIN_IDS.includes(chainId as ChainId)
 }
 
 export const CHAIN_ID_TO_ICON: Record<ChainId, string> = {

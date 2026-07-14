@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
-import { getAddress } from 'viem'
-import type { ChainId } from '@/constants/chains'
+import { getAddress, isAddress } from 'viem'
+import { type ChainId, isSupportedChainId } from '@/constants/chains'
 import {
   getCanonicalVaultAddress,
   getYieldDataAddress,
@@ -149,6 +149,7 @@ const normalizeVaultAddress = (address: string): string => {
  * Uses Kong REST for vault details and timeseries data
  */
 export function useVaultPageData({ vaultAddress, vaultChainId }: UseVaultPageDataProps): UseVaultPageDataReturn {
+  const hasValidRouteParams = isSupportedChainId(vaultChainId) && isAddress(vaultAddress)
   const canonicalVaultAddress = normalizeVaultAddress(getCanonicalVaultAddress(vaultChainId, vaultAddress))
   const yieldDataAddress = normalizeVaultAddress(getYieldDataAddress(vaultChainId, vaultAddress))
   const isYBold = isYBoldAddress(vaultChainId, vaultAddress)
@@ -175,14 +176,14 @@ export function useVaultPageData({ vaultAddress, vaultChainId }: UseVaultPageDat
     queryKey: ['kong', 'vault', 'snapshot', vaultChainId, normalizedAddress],
     queryFn: () => fetchKongVaultSnapshotRaw(vaultChainId, canonicalVaultAddress),
     staleTime: 30 * 1000,
-    enabled: Boolean(canonicalVaultAddress)
+    enabled: hasValidRouteParams
   })
 
   const { data: yBoldStakedSnapshot } = useQuery<KongVaultSnapshot | null, Error>({
     queryKey: ['kong', 'vault', 'snapshot', YBOLD_CHAIN_ID, YBOLD_STAKING_ADDRESS.toLowerCase()],
     queryFn: () => fetchKongVaultSnapshotRaw(YBOLD_CHAIN_ID, YBOLD_STAKING_ADDRESS),
     staleTime: 30 * 1000,
-    enabled: isYBold
+    enabled: hasValidRouteParams && isYBold
   })
 
   const { data: yvUsdAprData } = useQuery({
@@ -190,7 +191,7 @@ export function useVaultPageData({ vaultAddress, vaultChainId }: UseVaultPageDat
     queryFn: fetchYvUsdAprs,
     staleTime: 30 * 1000,
     refetchInterval: 60 * 1000,
-    enabled: isYvUsd
+    enabled: hasValidRouteParams && isYvUsd
   })
 
   const vaultDetails = useMemo(() => {
@@ -246,7 +247,8 @@ export function useVaultPageData({ vaultAddress, vaultChainId }: UseVaultPageDat
     segment: 'apy-historical',
     chainId: vaultChainId,
     address: yieldDataAddress,
-    components: ['weeklyNet']
+    components: ['weeklyNet'],
+    enabled: hasValidRouteParams
   })
 
   // Fetch monthly APY data from REST API
@@ -258,7 +260,8 @@ export function useVaultPageData({ vaultAddress, vaultChainId }: UseVaultPageDat
     segment: 'apy-historical',
     chainId: vaultChainId,
     address: yieldDataAddress,
-    components: ['monthlyNet']
+    components: ['monthlyNet'],
+    enabled: hasValidRouteParams
   })
 
   // Fetch APR-oracle APR timeseries from REST API (v3 only)
@@ -267,7 +270,7 @@ export function useVaultPageData({ vaultAddress, vaultChainId }: UseVaultPageDat
     chainId: vaultChainId,
     address: yieldDataAddress,
     components: ['apr'],
-    enabled: isV3Vault
+    enabled: hasValidRouteParams && isV3Vault
   })
 
   // Fetch TVL data from REST API
@@ -278,7 +281,8 @@ export function useVaultPageData({ vaultAddress, vaultChainId }: UseVaultPageDat
   } = useRestTimeseries({
     segment: 'tvl',
     chainId: vaultChainId,
-    address: canonicalVaultAddress
+    address: canonicalVaultAddress,
+    enabled: hasValidRouteParams
   })
 
   // Fetch PPS data from REST API
@@ -290,7 +294,8 @@ export function useVaultPageData({ vaultAddress, vaultChainId }: UseVaultPageDat
     segment: 'pps',
     chainId: vaultChainId,
     address: yieldDataAddress,
-    components: ['humanized']
+    components: ['humanized'],
+    enabled: hasValidRouteParams
   })
 
   // Calculate combined loading states
@@ -306,10 +311,10 @@ export function useVaultPageData({ vaultAddress, vaultChainId }: UseVaultPageDat
   }, [apyWeeklyError, apyMonthlyError, tvlError, ppsError])
 
   // Initial loading only waits for vault data (charts can load separately)
-  const isInitialLoading = vaultLoading
+  const isInitialLoading = hasValidRouteParams && vaultLoading
 
   // Has errors if vault fails to load
-  const hasErrors = !!snapshotError
+  const hasErrors = hasValidRouteParams && !!snapshotError
 
   return {
     // Vault data

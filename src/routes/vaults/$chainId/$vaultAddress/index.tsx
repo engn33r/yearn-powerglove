@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import React, { lazy, Suspense } from 'react'
+import { isAddress } from 'viem'
 import { MainInfoPanel } from '@/components/main-info-panel'
 
 // Lazy load ChartsPanel for code splitting (reduces initial bundle size)
@@ -12,7 +13,7 @@ const ChartsPanel = lazy(() =>
 import type { Address } from 'viem'
 import { StrategiesPanel } from '@/components/strategies-panel/index'
 import { VaultPageBreadcrumb, VaultPageLayout } from '@/components/vault-page'
-import type { ChainId } from '@/constants/chains'
+import { type ChainId, isSupportedChainId } from '@/constants/chains'
 import { isYvUsdAddress } from '@/constants/featuredVaults'
 import { useTokenAssetsContext } from '@/contexts/useTokenAssets'
 import { useAprOracle } from '@/hooks/useAprOracle'
@@ -26,8 +27,24 @@ import { formatPercent } from '@/lib/formatters'
 import { isLegacyVaultType } from '@/utils/vaultDataUtils'
 import { getVaultOverrideDisplayItems } from '@/utils/vaultOverrides'
 
-function SingleVaultPage() {
-  const { chainId, vaultAddress } = Route.useParams()
+function InvalidVaultParamsPage() {
+  return (
+    <main className="flex min-h-screen items-center justify-center px-6">
+      <div className="max-w-lg text-center">
+        <h1 className="text-2xl font-semibold text-slate-900">Invalid vault route</h1>
+        <p className="mt-2 text-sm text-slate-600">
+          The vault address or chain identifier in this URL is not valid. Please check the link and try again.
+        </p>
+      </div>
+    </main>
+  )
+}
+
+export function isValidVaultRouteParams(chainId: string, vaultAddress: string): boolean {
+  return isSupportedChainId(Number(chainId)) && isAddress(vaultAddress)
+}
+
+function ValidVaultPage({ chainId, vaultAddress }: { chainId: string; vaultAddress: string }) {
   const vaultChainId = Number(chainId) as ChainId
   const { assets: tokenAssets } = useTokenAssetsContext()
 
@@ -205,6 +222,16 @@ function SingleVaultPage() {
       </div>
     </VaultPageLayout>
   )
+}
+
+function SingleVaultPage() {
+  const { chainId, vaultAddress } = Route.useParams()
+
+  if (!isValidVaultRouteParams(chainId, vaultAddress)) {
+    return <InvalidVaultParamsPage />
+  }
+
+  return <ValidVaultPage chainId={chainId} vaultAddress={vaultAddress} />
 }
 
 export const Route = createFileRoute('/vaults/$chainId/$vaultAddress/')({
