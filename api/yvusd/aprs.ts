@@ -5,7 +5,10 @@ const getUpstreamUrl = (): URL => {
   return new URL(configuredUrl)
 }
 
-export default async function handler(req: { method?: string; query?: Record<string, unknown> }, res: any) {
+export default async function handler(
+  req: { method?: string; query?: Record<string, unknown> },
+  res: { status: (code: number) => { json: (body: unknown) => unknown }; setHeader: (name: string, value: string) => void }
+) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
@@ -27,8 +30,7 @@ export default async function handler(req: { method?: string; query?: Record<str
     if (!response.ok) {
       return res.status(response.status).json({
         error: 'yvUSD APR upstream error',
-        status: response.status,
-        details: await response.text()
+        status: response.status
       })
     }
 
