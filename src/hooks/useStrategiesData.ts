@@ -120,14 +120,16 @@ export function useStrategiesData(vaultChainId: ChainId, vaultDetails: VaultExte
       const keyedByAddress = indexedVaults.get(strategy.address.toLowerCase())
       const keyedByChain = indexedVaults.get(`${vaultChainId}-${strategy.address.toLowerCase()}`)
       const linkedVault = keyedByChain ?? keyedByAddress
+      const yvUsdApiStrategy = vaultDetails.yvUsdStrategyApyByAddress?.[strategy.address.toLowerCase()]
       const tokenSymbol = linkedVault?.asset?.symbol || vaultDetails.asset.symbol || ''
       const strategyDisplayName =
-        strategy.name && !strategy.name.startsWith('Strategy ') ? strategy.name : linkedVault?.name || strategy.name
+        yvUsdApiStrategy?.name ||
+        (strategy.name && !strategy.name.startsWith('Strategy ') ? strategy.name : linkedVault?.name || strategy.name)
 
       const strategyUsdValue = resolveStrategyAllocationAmountUsd(strategy)
       const hasAllocation = hasAllocatedDebt(strategy)
       const allocationPercent = hasAllocation ? strategy.debtRatio / 100 : 0
-      const displayApr = strategy.estimatedApy ?? strategy.netApr ?? 0
+      const displayApr = yvUsdApiStrategy?.apy ?? strategy.estimatedApy ?? strategy.netApr ?? 0
       const estimatedAPY = isLegacyVault || !hasAllocation ? ' - ' : formatApyDisplay(displayApr)
 
       const tokenIconUri =
@@ -145,7 +147,7 @@ export function useStrategiesData(vaultChainId: ChainId, vaultDetails: VaultExte
         estimatedAPY,
         tokenSymbol,
         tokenIconUri,
-        estimatedApySource: 'graph',
+        estimatedApySource: yvUsdApiStrategy ? 'oracle' : 'graph',
         details: {
           chainId: linkedVault?.chainId ?? vaultChainId,
           vaultAddress: strategy.address,

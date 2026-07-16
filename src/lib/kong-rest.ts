@@ -18,6 +18,8 @@ const normalizeAddress = (address: string): string => {
   }
 }
 
+const encodePathSegment = (segment: string | number): string => encodeURIComponent(String(segment))
+
 async function fetchWithTimeout(url: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -51,7 +53,7 @@ export async function fetchKongJson<T>(url: string, options?: { allow404?: boole
 export const getKongVaultListUrl = (): string => `${KONG_REST_BASE}/list/vaults?origin=yearn`
 
 export const getKongVaultSnapshotUrl = (chainId: number, address: string): string => {
-  return `${KONG_REST_BASE}/snapshot/${chainId}/${normalizeAddress(address)}`
+  return `${KONG_REST_BASE}/snapshot/${encodePathSegment(chainId)}/${encodePathSegment(normalizeAddress(address))}`
 }
 
 export const getKongTimeseriesUrl = (
@@ -60,7 +62,9 @@ export const getKongTimeseriesUrl = (
   address: string,
   components?: string[]
 ): string => {
-  const url = new URL(`${KONG_REST_BASE}/timeseries/${segment}/${chainId}/${normalizeAddress(address)}`)
+  const url = new URL(
+    `${KONG_REST_BASE}/timeseries/${encodePathSegment(segment)}/${encodePathSegment(chainId)}/${encodePathSegment(normalizeAddress(address))}`
+  )
   components?.forEach((component) => {
     url.searchParams.append('components', component)
   })

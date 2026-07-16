@@ -11,6 +11,8 @@ import { FixedHeightChartContainer } from '@/components/charts/chart-container'
 import { calculatePpsPeriodApy, getTimeframeLimit } from '@/components/charts/chart-utils'
 import PPSChart from '@/components/charts/PPSChart'
 import TVLChart from '@/components/charts/TVLChart'
+import YvUsdDualLineChart from '@/components/charts/YvUsdDualLineChart'
+import YvUsdTVLChart from '@/components/charts/YvUsdTVLChart'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -23,7 +25,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useIsMobile } from '@/components/ui/use-mobile'
 import { ChartErrorBoundary } from '@/components/utils/ErrorBoundary'
-import type { aprApyChartData, ppsChartData, tvlChartData } from '@/types/dataTypes'
+import type { aprApyChartData, ppsChartData, tvlChartData, yvUsdChartData } from '@/types/dataTypes'
 
 type ChartData = {
   aprApyData: aprApyChartData | null
@@ -31,6 +33,12 @@ type ChartData = {
   ppsData: ppsChartData | null
   isLoading?: boolean
   hasErrors?: boolean
+  yvUsdChartData?: {
+    aprApyData: yvUsdChartData
+    lockedAprApyData: aprApyChartData
+    tvlData: yvUsdChartData
+    ppsData: yvUsdChartData
+  } | null
 }
 
 type ChartTab = 'historical-apy' | 'historical-pps' | 'historical-tvl'
@@ -65,7 +73,7 @@ type Timeframe = (typeof timeframes)[number]
 export function ChartsPanel(data: ChartData) {
   const isMobile = useIsMobile()
   const [activeTab, setActiveTab] = useState<ChartTab>('historical-apy')
-  const { aprApyData, tvlData, ppsData, isLoading = false, hasErrors = false } = data
+  const { aprApyData, tvlData, ppsData, yvUsdChartData, isLoading = false, hasErrors = false } = data
   const [timeframe, setTimeframe] = useState<Timeframe>(timeframes[3])
   const [apyVisibleSeries, setApyVisibleSeries] = useState<APYVisibleSeries>(() =>
     buildApyVisibleSeries({
@@ -111,21 +119,35 @@ export function ChartsPanel(data: ChartData) {
   })
   const selectedApySeriesCount = availableApySeries.filter((seriesKey) => apyVisibleSeries[seriesKey]).length
 
+  const hasYvUsdChartData = Boolean(yvUsdChartData)
+
   const chartInfo = {
     'historical-apy': {
-      title: 'Vault Performance',
-      description: `1-Day, 7-Day, and 30-Day APYs over ${timeframe.label}.`,
-      mobileDescription: `Compare APY trends over ${timeframe.mobileLabel}.`
+      title: hasYvUsdChartData ? 'yvUSD Performance' : 'Vault Performance',
+      description: hasYvUsdChartData
+        ? `Unlocked and locked APY over ${timeframe.label}.`
+        : `1-Day, 7-Day, and 30-Day APYs over ${timeframe.label}.`,
+      mobileDescription: hasYvUsdChartData
+        ? `Compare locked and unlocked APY over ${timeframe.mobileLabel}.`
+        : `Compare APY trends over ${timeframe.mobileLabel}.`
     },
     'historical-pps': {
-      title: 'Vault Share Growth',
-      description: `Price Per Share values over ${timeframe.label}.`,
-      mobileDescription: `Track share price growth over ${timeframe.mobileLabel}.`
+      title: hasYvUsdChartData ? 'yvUSD Share Growth' : 'Vault Share Growth',
+      description: hasYvUsdChartData
+        ? `Unlocked and locked share values in yvUSD terms over ${timeframe.label}.`
+        : `Price Per Share values over ${timeframe.label}.`,
+      mobileDescription: hasYvUsdChartData
+        ? `Track locked and unlocked share growth over ${timeframe.mobileLabel}.`
+        : `Track share price growth over ${timeframe.mobileLabel}.`
     },
     'historical-tvl': {
-      title: 'Total Value Deposited',
-      description: `Value deposited in vault over ${timeframe.label}.`,
-      mobileDescription: `Review TVL changes over ${timeframe.mobileLabel}.`
+      title: hasYvUsdChartData ? 'yvUSD Deposits' : 'Total Value Deposited',
+      description: hasYvUsdChartData
+        ? `Unlocked and locked deposits over ${timeframe.label}.`
+        : `Value deposited in vault over ${timeframe.label}.`,
+      mobileDescription: hasYvUsdChartData
+        ? `Review locked and unlocked TVL over ${timeframe.mobileLabel}.`
+        : `Review TVL changes over ${timeframe.mobileLabel}.`
     }
   } satisfies Record<ChartTab, { title: string; description: string; mobileDescription: string }>
 
@@ -142,6 +164,25 @@ export function ChartsPanel(data: ChartData) {
   const chartBody = (() => {
     switch (activeTab) {
       case 'historical-apy':
+        if (yvUsdChartData) {
+          return (
+            <FixedHeightChartContainer heightClassName={chartHeightClassName}>
+              <ChartErrorBoundary>
+                <APYChart
+                  chartData={aprApyData}
+                  comparisonChartData={yvUsdChartData.lockedAprApyData}
+                  comparisonLabel="Locked yvUSD"
+                  timeframe={timeframe.value}
+                  visibleSeries={apyVisibleSeries}
+                  onVisibleSeriesChange={setApyVisibleSeries}
+                  hideSeriesControls={true}
+                  ppsPeriodApy={ppsPeriodApy}
+                />
+              </ChartErrorBoundary>
+            </FixedHeightChartContainer>
+          )
+        }
+
         return (
           <FixedHeightChartContainer heightClassName={chartHeightClassName}>
             <ChartErrorBoundary>
@@ -171,6 +212,16 @@ export function ChartsPanel(data: ChartData) {
           </FixedHeightChartContainer>
         )
       case 'historical-pps':
+        if (yvUsdChartData) {
+          return (
+            <FixedHeightChartContainer heightClassName={chartHeightClassName}>
+              <ChartErrorBoundary>
+                <YvUsdDualLineChart chartData={yvUsdChartData.ppsData} timeframe={timeframe.value} valueType="pps" />
+              </ChartErrorBoundary>
+            </FixedHeightChartContainer>
+          )
+        }
+
         return (
           <FixedHeightChartContainer heightClassName={chartHeightClassName}>
             <ChartErrorBoundary>
@@ -200,6 +251,16 @@ export function ChartsPanel(data: ChartData) {
           </FixedHeightChartContainer>
         )
       case 'historical-tvl':
+        if (yvUsdChartData) {
+          return (
+            <FixedHeightChartContainer heightClassName={chartHeightClassName}>
+              <ChartErrorBoundary>
+                <YvUsdTVLChart chartData={yvUsdChartData.tvlData} timeframe={timeframe.value} />
+              </ChartErrorBoundary>
+            </FixedHeightChartContainer>
+          )
+        }
+
         return (
           <FixedHeightChartContainer heightClassName={chartHeightClassName}>
             <ChartErrorBoundary>

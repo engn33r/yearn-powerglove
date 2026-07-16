@@ -14,6 +14,7 @@ import { VaultEventsLoadingState } from './VaultEventsLoadingState'
 interface VaultManagementEventsPanelProps {
   vaultChainId: ChainId
   vaultAddress: string
+  vaultEventAddresses?: string[]
   assetSymbol?: string
   assetDecimals?: number
   shareSymbol?: string
@@ -24,10 +25,20 @@ interface VaultManagementEventsPanelProps {
 const PAGE_SIZE = 50
 
 export const VaultManagementEventsPanel: React.FC<VaultManagementEventsPanelProps> = React.memo(
-  ({ vaultChainId, vaultAddress, assetSymbol, assetDecimals, shareSymbol, shareDecimals, strategyDetails = [] }) => {
+  ({
+    vaultChainId,
+    vaultAddress,
+    vaultEventAddresses,
+    assetSymbol,
+    assetDecimals,
+    shareSymbol,
+    shareDecimals,
+    strategyDetails = []
+  }) => {
     const {
       allEvents,
       allEventCount,
+      isTruncated,
       countsByType,
       availableEventTypeOptions,
       isLoading,
@@ -36,17 +47,29 @@ export const VaultManagementEventsPanel: React.FC<VaultManagementEventsPanelProp
       setEventType,
       currentPage,
       setCurrentPage
-    } = useVaultManagementEvents(vaultAddress, vaultChainId)
+    } = useVaultManagementEvents(vaultEventAddresses ?? vaultAddress, vaultChainId)
+    const eventAddresses = vaultEventAddresses ?? [vaultAddress]
+    const eventAddressesKey = eventAddresses.map((address) => address.toLowerCase()).join(',')
 
     const {
-      data: userEvents = [],
+      data: userEventsResult,
       isLoading: isUserEventsLoading,
       error: userEventsError
     } = useQuery({
-      queryKey: ['envio', 'vault-user-events', vaultChainId, vaultAddress.toLowerCase()],
-      queryFn: () => fetchVaultUserEvents(vaultAddress, vaultChainId),
+      queryKey: ['envio', 'vault-user-events', vaultChainId, eventAddressesKey],
+      queryFn: async ({ signal }) => {
+        const results = await Promise.all(
+          eventAddresses.map((address) => fetchVaultUserEvents(address, vaultChainId, { signal }))
+        )
+        return {
+          events: results.flatMap((result) => result.events),
+          isTruncated: results.some((result) => result.isTruncated)
+        }
+      },
       staleTime: 60 * 1000
     })
+    const userEvents = userEventsResult?.events ?? []
+    const hasTruncatedHistory = isTruncated || Boolean(userEventsResult?.isTruncated)
 
     const baseStrategyNamesByAddress = React.useMemo(() => {
       const byAddress: Record<string, string> = {}
@@ -169,6 +192,9 @@ export const VaultManagementEventsPanel: React.FC<VaultManagementEventsPanelProp
               <span>
                 <span className="font-semibold text-black">{activeTypeCount}</span> matching current filter
               </span>
+            ) : null}
+            {hasTruncatedHistory ? (
+              <span className="font-semibold text-amber-700">Showing a partial history capped to recent events</span>
             ) : null}
           </div>
           <div className="flex-1" />

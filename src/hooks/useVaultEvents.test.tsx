@@ -4,7 +4,10 @@ import { fetchVaultUserEvents } from '@/lib/vault-events'
 import { useVaultEvents } from './useVaultEvents'
 
 vi.mock('@/lib/vault-events', () => ({
-  fetchVaultUserEvents: vi.fn()
+  fetchVaultUserEvents: vi.fn(),
+  sortEventsChronologically: vi.fn((events) =>
+    [...events].sort((a, b) => Number(b.blockTimestamp) - Number(a.blockTimestamp))
+  )
 }))
 
 function makeEvents(count: number, vaultAddress: string) {
@@ -30,8 +33,8 @@ describe('useVaultEvents', () => {
   })
 
   it('resets pagination when the selected vault changes', async () => {
-    fetchVaultUserEventsMock.mockResolvedValueOnce(makeEvents(120, '0xvault-a'))
-    fetchVaultUserEventsMock.mockResolvedValueOnce(makeEvents(10, '0xvault-b'))
+    fetchVaultUserEventsMock.mockResolvedValueOnce({ events: makeEvents(120, '0xvault-a'), isTruncated: false })
+    fetchVaultUserEventsMock.mockResolvedValueOnce({ events: makeEvents(10, '0xvault-b'), isTruncated: false })
 
     const { result, rerender } = renderHook(({ vaultAddress, chainId }) => useVaultEvents(vaultAddress, chainId), {
       initialProps: {
@@ -58,5 +61,20 @@ describe('useVaultEvents', () => {
     expect(result.current.currentPage).toBe(1)
     expect(result.current.totalPages).toBe(1)
     expect(result.current.events).toHaveLength(10)
+  })
+
+  it('combines events for grouped vault addresses', async () => {
+    fetchVaultUserEventsMock.mockResolvedValueOnce({ events: makeEvents(2, '0xvault-a'), isTruncated: false })
+    fetchVaultUserEventsMock.mockResolvedValueOnce({ events: makeEvents(3, '0xvault-b'), isTruncated: true })
+
+    const { result } = renderHook(() => useVaultEvents(['0xvault-a', '0xvault-b'], 1))
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(fetchVaultUserEventsMock).toHaveBeenCalledWith('0xvault-a', 1, { signal: expect.any(AbortSignal) })
+    expect(fetchVaultUserEventsMock).toHaveBeenCalledWith('0xvault-b', 1, { signal: expect.any(AbortSignal) })
+    expect(result.current.events).toHaveLength(5)
+    expect(result.current.depositCount).toBe(5)
+    expect(result.current.isTruncated).toBe(true)
   })
 })

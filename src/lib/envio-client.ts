@@ -14,11 +14,16 @@ const headers: Record<string, string> = {
   'Content-Type': 'application/json'
 }
 
-export async function queryEnvio<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
+export async function queryEnvio<T>(
+  query: string,
+  variables?: Record<string, unknown>,
+  options?: { signal?: AbortSignal }
+): Promise<T> {
   const response = await fetch(getEnvioGraphqlUrl(), {
     method: 'POST',
     headers,
-    body: JSON.stringify({ query, variables })
+    body: JSON.stringify({ query, variables }),
+    signal: options?.signal
   })
 
   if (!response.ok) {

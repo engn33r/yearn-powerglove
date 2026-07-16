@@ -1,20 +1,29 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ChainId } from '@/constants/chains'
-import { fetchVaultUserEvents } from '@/lib/vault-events'
+import { fetchVaultUserEvents, sortEventsChronologically } from '@/lib/vault-events'
 import type { VaultUserEvent, VaultUserEventType } from '@/types/vaultEventTypes'
 
 const PAGE_SIZE = 50
 
-export function useVaultEvents(vaultAddress: string | undefined, chainId: ChainId | undefined) {
+const normalizeVaultAddresses = (vaultAddress: string | string[] | undefined): string[] => {
+  const addresses = Array.isArray(vaultAddress) ? vaultAddress : vaultAddress ? [vaultAddress] : []
+  return [...new Map(addresses.map((address) => [address.toLowerCase(), address])).values()]
+}
+
+export function useVaultEvents(vaultAddress: string | string[] | undefined, chainId: ChainId | undefined) {
   const [allEvents, setAllEvents] = useState<VaultUserEvent[]>([])
+  const [isTruncated, setIsTruncated] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<Error | null>(null)
   const [eventType, setEventType] = useState<'all' | VaultUserEventType>('all')
   const [currentPage, setCurrentPage] = useState(1)
+  const vaultAddressesKey = useMemo(() => normalizeVaultAddresses(vaultAddress).join(','), [vaultAddress])
+  const vaultAddresses = useMemo(() => (vaultAddressesKey ? vaultAddressesKey.split(',') : []), [vaultAddressesKey])
 
   useEffect(() => {
-    if (!vaultAddress || !chainId) {
+    if (vaultAddresses.length === 0 || !chainId) {
       setAllEvents([])
+      setIsTruncated(false)
       setIsLoading(false)
       setCurrentPage(1)
       return
@@ -24,11 +33,15 @@ export function useVaultEvents(vaultAddress: string | undefined, chainId: ChainI
     setCurrentPage(1)
     setIsLoading(true)
     setError(null)
+    setIsTruncated(false)
 
-    fetchVaultUserEvents(vaultAddress, chainId)
-      .then((events) => {
+    const controller = new AbortController()
+
+    Promise.all(vaultAddresses.map((address) => fetchVaultUserEvents(address, chainId, { signal: controller.signal })))
+      .then((results) => {
         if (!cancelled) {
-          setAllEvents(events)
+          setAllEvents(sortEventsChronologically(results.flatMap((result) => result.events)))
+          setIsTruncated(results.some((result) => result.isTruncated))
           setIsLoading(false)
         }
       })
@@ -41,8 +54,9 @@ export function useVaultEvents(vaultAddress: string | undefined, chainId: ChainI
 
     return () => {
       cancelled = true
+      controller.abort()
     }
-  }, [vaultAddress, chainId])
+  }, [vaultAddresses, chainId])
 
   const filteredEvents = eventType === 'all' ? allEvents : allEvents.filter((e) => e.type === eventType)
 
@@ -63,6 +77,7 @@ export function useVaultEvents(vaultAddress: string | undefined, chainId: ChainI
     depositCount,
     withdrawCount,
     transferCount,
+    isTruncated,
     isLoading,
     error,
     eventType,
