@@ -40,6 +40,7 @@ export type VaultSimple = {
   performanceFee: number
   forwardApyNet?: number | null
   strategyForwardAprs?: Record<string, number | null>
+  yvUsdStrategyApyByAddress?: Record<string, { apy: number; name?: string }>
 }
 
 export type Vault = VaultSimple &

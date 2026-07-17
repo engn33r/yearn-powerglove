@@ -3,6 +3,7 @@ import { ReallocationChart, ReallocationStrategyTable } from '@/components/reall
 import StrategiesSkeleton from '@/components/strategies-panel/StrategiesSkeleton'
 import { useIsMobile } from '@/components/ui/use-mobile'
 import { VaultEventsPanel, VaultManagementEventsPanel } from '@/components/vault-events'
+import { getVaultEventAddresses } from '@/constants/featuredVaults'
 import { useRootDarkMode } from '@/hooks/useRootDarkMode'
 import { useSortingAndFiltering } from '@/hooks/useSortingAndFiltering'
 import { useStrategiesData } from '@/hooks/useStrategiesData'
@@ -54,6 +55,10 @@ export const StrategiesPanel: React.FC<StrategiesPanelProps> = React.memo(
     const hasHistoricalAllocation = !isLegacyVaultType(vaultDetails)
     const hasHistoricalUserEvents = isEnvioConfigured()
     const hasVaultManagementEvents = isEnvioConfigured()
+    const vaultEventAddresses = React.useMemo(
+      () => getVaultEventAddresses(vaultChainId, vaultDetails.address),
+      [vaultChainId, vaultDetails.address]
+    )
     const latestReallocationPanelId = reallocationData?.panels.length
       ? reallocationData.panels[reallocationData.panels.length - 1]?.id
       : undefined
@@ -305,6 +310,7 @@ export const StrategiesPanel: React.FC<StrategiesPanelProps> = React.memo(
             <VaultManagementEventsPanel
               vaultChainId={vaultChainId}
               vaultAddress={vaultDetails.address}
+              vaultEventAddresses={vaultEventAddresses}
               assetSymbol={vaultDetails.asset?.symbol}
               assetDecimals={vaultDetails.asset?.decimals}
               shareSymbol={vaultDetails.symbol}
@@ -317,6 +323,7 @@ export const StrategiesPanel: React.FC<StrategiesPanelProps> = React.memo(
             <VaultEventsPanel
               vaultChainId={vaultChainId}
               vaultAddress={vaultDetails.address}
+              vaultEventAddresses={vaultEventAddresses}
               assetSymbol={vaultDetails.asset?.symbol}
               assetDecimals={vaultDetails.asset?.decimals}
               shareSymbol={vaultDetails.symbol}

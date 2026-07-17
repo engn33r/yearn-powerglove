@@ -1,20 +1,33 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ChainId } from '@/constants/chains'
-import { fetchVaultManagementEvents, MANAGEMENT_EVENT_TYPE_OPTIONS } from '@/lib/vault-events'
+import {
+  fetchVaultManagementEvents,
+  MANAGEMENT_EVENT_TYPE_OPTIONS,
+  sortEventsChronologically
+} from '@/lib/vault-events'
 import type { VaultManagementEvent, VaultManagementEventType } from '@/types/vaultEventTypes'
 
 const PAGE_SIZE = 50
 
-export function useVaultManagementEvents(vaultAddress: string | undefined, chainId: ChainId | undefined) {
+const normalizeVaultAddresses = (vaultAddress: string | string[] | undefined): string[] => {
+  const addresses = Array.isArray(vaultAddress) ? vaultAddress : vaultAddress ? [vaultAddress] : []
+  return [...new Map(addresses.map((address) => [address.toLowerCase(), address])).values()]
+}
+
+export function useVaultManagementEvents(vaultAddress: string | string[] | undefined, chainId: ChainId | undefined) {
   const [allEvents, setAllEvents] = useState<VaultManagementEvent[]>([])
+  const [isTruncated, setIsTruncated] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<Error | null>(null)
   const [eventType, setEventType] = useState<'all' | VaultManagementEventType>('all')
   const [currentPage, setCurrentPage] = useState(1)
+  const vaultAddressesKey = useMemo(() => normalizeVaultAddresses(vaultAddress).join(','), [vaultAddress])
+  const vaultAddresses = useMemo(() => (vaultAddressesKey ? vaultAddressesKey.split(',') : []), [vaultAddressesKey])
 
   useEffect(() => {
-    if (!vaultAddress || !chainId) {
+    if (vaultAddresses.length === 0 || !chainId) {
       setAllEvents([])
+      setIsTruncated(false)
       setIsLoading(false)
       setCurrentPage(1)
       return
@@ -24,11 +37,17 @@ export function useVaultManagementEvents(vaultAddress: string | undefined, chain
     setCurrentPage(1)
     setIsLoading(true)
     setError(null)
+    setIsTruncated(false)
 
-    fetchVaultManagementEvents(vaultAddress, chainId)
-      .then((events) => {
+    const controller = new AbortController()
+
+    Promise.all(
+      vaultAddresses.map((address) => fetchVaultManagementEvents(address, chainId, { signal: controller.signal }))
+    )
+      .then((results) => {
         if (!cancelled) {
-          setAllEvents(events)
+          setAllEvents(sortEventsChronologically(results.flatMap((result) => result.events)))
+          setIsTruncated(results.some((result) => result.isTruncated))
           setIsLoading(false)
         }
       })
@@ -41,8 +60,9 @@ export function useVaultManagementEvents(vaultAddress: string | undefined, chain
 
     return () => {
       cancelled = true
+      controller.abort()
     }
-  }, [vaultAddress, chainId])
+  }, [vaultAddresses, chainId])
 
   const filteredEvents = eventType === 'all' ? allEvents : allEvents.filter((event) => event.type === eventType)
   const totalPages = Math.max(1, Math.ceil(filteredEvents.length / PAGE_SIZE))
@@ -82,6 +102,7 @@ export function useVaultManagementEvents(vaultAddress: string | undefined, chain
     events: paginatedEvents,
     totalCount: filteredEvents.length,
     allEventCount: allEvents.length,
+    isTruncated,
     countsByType,
     availableEventTypeOptions,
     isLoading,

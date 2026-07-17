@@ -3,6 +3,8 @@ import { queryEnvio } from '@/lib/envio-client'
 import type { VaultActivityEvent, VaultEventType, VaultManagementEvent, VaultUserEvent } from '@/types/vaultEventTypes'
 
 const ENVIO_PAGE_SIZE = 250
+const ENVIO_MAX_PAGES = 8
+const ENVIO_MAX_ACCUMULATED_ROWS = ENVIO_PAGE_SIZE * ENVIO_MAX_PAGES
 
 const VAULT_ADDRESS_WHERE = '{ vaultAddress: { _eq: $vaultAddress }, chainId: { _eq: $chainId } }'
 const TIMELOCK_WHERE = `{
@@ -952,39 +954,66 @@ async function fetchPaginatedEnvioEvents<T extends VaultActivityEvent>(
   queryName: string,
   definitions: readonly EnvioEventDefinition<T>[],
   vaultAddress: string,
-  chainId: number
-): Promise<T[]> {
+  chainId: number,
+  options?: { signal?: AbortSignal }
+): Promise<{ events: T[]; isTruncated: boolean }> {
   const query = buildPaginatedEventQuery(queryName, definitions as readonly EnvioEventDefinition<VaultActivityEvent>[])
   const events: T[] = []
+  let isTruncated = false
 
-  for (let offset = 0; ; offset += ENVIO_PAGE_SIZE) {
-    const data = await queryEnvio<Record<string, RawEventRecord[]>>(query, {
-      vaultAddress,
-      chainId,
-      limit: ENVIO_PAGE_SIZE,
-      offset
-    })
+  for (let offset = 0; offset < ENVIO_PAGE_SIZE * ENVIO_MAX_PAGES; offset += ENVIO_PAGE_SIZE) {
+    if (options?.signal?.aborted) {
+      throw new DOMException('The operation was aborted.', 'AbortError')
+    }
+
+    const data = await queryEnvio<Record<string, RawEventRecord[]>>(
+      query,
+      {
+        vaultAddress,
+        chainId,
+        limit: ENVIO_PAGE_SIZE,
+        offset
+      },
+      options
+    )
 
     let hasMore = false
 
     for (const definition of definitions) {
+      if (events.length >= ENVIO_MAX_ACCUMULATED_ROWS) {
+        isTruncated = true
+        break
+      }
+
       const rows = Array.isArray(data[definition.alias]) ? data[definition.alias] : []
 
       for (const row of rows) {
+        if (events.length >= ENVIO_MAX_ACCUMULATED_ROWS) {
+          isTruncated = true
+          break
+        }
         events.push(definition.map(row))
       }
 
       if (rows.length >= ENVIO_PAGE_SIZE) {
         hasMore = true
       }
+
+      if (events.length >= ENVIO_MAX_ACCUMULATED_ROWS) {
+        isTruncated = true
+        break
+      }
     }
 
-    if (!hasMore) {
+    if (!hasMore || events.length >= ENVIO_MAX_ACCUMULATED_ROWS) {
+      if (events.length >= ENVIO_MAX_ACCUMULATED_ROWS) {
+        isTruncated = true
+      }
       break
     }
   }
 
-  return sortEventsChronologically(events)
+  return { events: sortEventsChronologically(events), isTruncated }
 }
 
 function getEventLogIndex(event: VaultActivityEvent): number {
@@ -1043,18 +1072,33 @@ function dedupEvents(events: VaultUserEvent[]): VaultUserEvent[] {
   return deduped
 }
 
-export async function fetchVaultUserEvents(vaultAddress: string, chainId: number): Promise<VaultUserEvent[]> {
-  const events = await fetchPaginatedEnvioEvents('GetVaultUserEvents', USER_EVENT_DEFINITIONS, vaultAddress, chainId)
-  // Drop DAO/treasury management moves so the per-vault user-event view shows organic activity only.
-  const organic = events.filter((event) => !isExcludedTransactionFrom(event.transactionFrom))
-  return dedupEvents(organic)
+export async function fetchVaultUserEvents(
+  vaultAddress: string,
+  chainId: number,
+  options?: { signal?: AbortSignal }
+): Promise<{ events: VaultUserEvent[]; isTruncated: boolean }> {
+  const { events, isTruncated } = await fetchPaginatedEnvioEvents(
+    'GetVaultUserEvents',
+    USER_EVENT_DEFINITIONS,
+    vaultAddress,
+    chainId,
+    options
+  )
+  return { events: dedupEvents(events), isTruncated }
 }
 
 export async function fetchVaultManagementEvents(
   vaultAddress: string,
-  chainId: number
-): Promise<VaultManagementEvent[]> {
-  return fetchPaginatedEnvioEvents('GetVaultManagementEvents', MANAGEMENT_EVENT_DEFINITIONS, vaultAddress, chainId)
+  chainId: number,
+  options?: { signal?: AbortSignal }
+): Promise<{ events: VaultManagementEvent[]; isTruncated: boolean }> {
+  return fetchPaginatedEnvioEvents(
+    'GetVaultManagementEvents',
+    MANAGEMENT_EVENT_DEFINITIONS,
+    vaultAddress,
+    chainId,
+    options
+  )
 }
 
 export const MANAGEMENT_EVENT_TYPES = MANAGEMENT_EVENT_DEFINITIONS.map((definition) => definition.type)

@@ -8,6 +8,7 @@ import { VaultEventsLoadingState } from './VaultEventsLoadingState'
 interface VaultEventsPanelProps {
   vaultChainId: ChainId
   vaultAddress: string
+  vaultEventAddresses?: string[]
   assetSymbol?: string
   assetDecimals?: number
   shareSymbol?: string
@@ -15,13 +16,14 @@ interface VaultEventsPanelProps {
 }
 
 export const VaultEventsPanel: React.FC<VaultEventsPanelProps> = React.memo(
-  ({ vaultChainId, vaultAddress, assetSymbol, assetDecimals, shareSymbol, shareDecimals }) => {
+  ({ vaultChainId, vaultAddress, vaultEventAddresses, assetSymbol, assetDecimals, shareSymbol, shareDecimals }) => {
     const {
       events,
       totalCount,
       depositCount,
       withdrawCount,
       transferCount,
+      isTruncated,
       isLoading,
       error,
       eventType,
@@ -29,7 +31,7 @@ export const VaultEventsPanel: React.FC<VaultEventsPanelProps> = React.memo(
       currentPage,
       setCurrentPage,
       totalPages
-    } = useVaultEvents(vaultAddress, vaultChainId)
+    } = useVaultEvents(vaultEventAddresses ?? vaultAddress, vaultChainId)
 
     if (error) {
       return (
@@ -64,6 +66,7 @@ export const VaultEventsPanel: React.FC<VaultEventsPanelProps> = React.memo(
             <span>
               <span className="font-semibold text-black">{transferCount}</span> transfers
             </span>
+            {isTruncated ? <span className="font-semibold text-amber-700">Recent events only</span> : null}
           </div>
           <div className="flex-1" />
           <div className="flex items-center gap-2">

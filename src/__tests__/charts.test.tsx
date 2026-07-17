@@ -2,6 +2,7 @@ import { fireEvent, render } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { APYChart } from '@/components/charts/APYChart'
 import { PPSChart } from '@/components/charts/PPSChart'
+import { YvUsdTVLChart, YvUsdTvlTooltipContent } from '@/components/charts/YvUsdTVLChart'
 
 describe('APYChart', () => {
   it('renders without crashing', () => {
@@ -97,5 +98,52 @@ describe('PPSChart', () => {
     )
 
     expect(aprContainer.querySelector('path[stroke="var(--color-derivedApr)"]')).toBeTruthy()
+  })
+})
+
+describe('YvUsdTVLChart', () => {
+  it('renders locked and unlocked TVL as stacked bars', () => {
+    const chartData = [
+      { date: '2026-01-01', unlocked: 750_000, locked: 250_000 },
+      { date: '2026-01-02', unlocked: 800_000, locked: 300_000 }
+    ]
+
+    Element.prototype.getBoundingClientRect = vi.fn(() => ({
+      width: 400,
+      height: 300,
+      top: 0,
+      left: 0,
+      bottom: 300,
+      right: 400,
+      x: 0,
+      y: 0,
+      toJSON: () => {}
+    }))
+
+    const { container } = render(
+      <div style={{ width: '400px', height: '300px' }}>
+        <YvUsdTVLChart chartData={chartData} timeframe="30d" />
+      </div>
+    )
+
+    expect(container.querySelector('[fill="var(--color-unlocked)"]')).toBeTruthy()
+    expect(container.querySelector('[fill="var(--color-locked)"]')).toBeTruthy()
+    expect(container.querySelector('path[stroke="var(--color-unlocked)"]')).toBeNull()
+  })
+
+  it('shows the combined locked and unlocked value in the tooltip', () => {
+    const { getByText } = render(
+      <YvUsdTvlTooltipContent
+        active
+        label="2026-01-01"
+        payload={[
+          { dataKey: 'unlocked', name: 'unlocked', value: 750_000 },
+          { dataKey: 'locked', name: 'locked', value: 250_000 }
+        ]}
+      />
+    )
+
+    expect(getByText('Combined')).toBeTruthy()
+    expect(getByText('$1,000,000')).toBeTruthy()
   })
 })
